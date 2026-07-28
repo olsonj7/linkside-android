@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1038766986687",
+    "project_id": "linkside-f7323",
+    "storage_bucket": "linkside-f7323.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1038766986687:android:8a903fc7db9c266b51fd0a",
+        "android_client_info": {
+          "package_name": "com.linkside.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDV5iMeoiWw1RbV0BnBEyAhpBwerIXgh90"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1038766986687:android:a1073fb5f7af942751fd0a",
+        "android_client_info": {
+          "package_name": "com.linkside.app.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDV5iMeoiWw1RbV0BnBEyAhpBwerIXgh90"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

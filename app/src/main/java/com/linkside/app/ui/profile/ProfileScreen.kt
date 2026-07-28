@@ -2,18 +2,29 @@ package com.linkside.app.ui.profile
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
@@ -21,14 +32,19 @@ import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.GolfCourse
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.SportsGolf
 import androidx.compose.material.icons.filled.StarOutline
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -40,16 +56,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.linkside.app.data.model.GolfCourse
+import com.linkside.app.data.model.GolfTrip
+import com.linkside.app.data.model.TeeTime
+import com.linkside.app.data.model.Tournament
 import com.linkside.app.data.model.User
 import com.linkside.app.data.prefs.ProfilePreferences
 import com.linkside.app.ui.components.LinksideWordmark
 import com.linkside.app.ui.components.ProfileAvatarView
 import com.linkside.app.ui.components.SectionHeader
 import com.linkside.app.ui.theme.LinksideColors
+import com.linkside.app.util.ImageCompression
+import java.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,11 +83,26 @@ fun ProfileScreen(
     profilePreferences: ProfilePreferences,
     courseSearchResults: List<GolfCourse>,
     isSearchingCourses: Boolean,
+    isUploadingAvatar: Boolean = false,
+    declinedTeeTimes: List<TeeTime> = emptyList(),
+    declinedTrips: List<GolfTrip> = emptyList(),
+    withdrawnTournaments: List<Tournament> = emptyList(),
+    previousTeeTimes: List<TeeTime> = emptyList(),
+    roundScores: Map<String, Int> = emptyMap(),
     onDarkModeChange: (Boolean) -> Unit,
     onEditProfile: () -> Unit,
     onSearchCourses: (String) -> Unit,
     onAddFavoriteCourse: (GolfCourse) -> Unit,
     onRemoveFavoriteCourse: (String) -> Unit,
+    onUploadAvatar: (ByteArray, String) -> Unit,
+    onDeleteAvatar: () -> Unit,
+    onDeclinedTeeTimeClick: (String) -> Unit = {},
+    onDeclinedTripClick: (String) -> Unit = {},
+    onWithdrawnTournamentClick: (String) -> Unit = {},
+    onPreviousTeeTimeClick: (String) -> Unit = {},
+    onLinkEmail: () -> Unit = {},
+    onLinkGoogle: () -> Unit = {},
+    isLinkingGoogle: Boolean = false,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -75,6 +115,24 @@ fun ProfileScreen(
     val favorites = user.favoriteCourses.orEmpty()
     val homeAddress = formatHomeAddress(user.address, user.city, user.state, user.zipCode)
     val primary = primaryAuthMethod(user)
+    val hasAvatar = !user.avatarUrl.isNullOrBlank()
+
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val raw = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        if (raw == null) {
+            Toast.makeText(context, "Couldn't read that photo.", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        val compressed = ImageCompression.compressForAvatar(raw)
+        if (compressed == null) {
+            Toast.makeText(context, "Couldn't process that image. Try a different photo.", Toast.LENGTH_LONG).show()
+            return@rememberLauncherForActivityResult
+        }
+        onUploadAvatar(compressed, "image/jpeg")
+    }
 
     if (showAddFavorite) {
         AddFavoriteCourseSheet(
@@ -93,14 +151,17 @@ fun ProfileScreen(
         modifier = modifier,
         containerColor = LinksideColors.Primary,
         topBar = {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(LinksideColors.Primary)
                     .padding(horizontal = 24.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                contentAlignment = Alignment.Center,
             ) {
-                LinksideWordmark(fontSize = 20)
+                LinksideWordmark(
+                    fontSize = 20,
+                    textAlign = TextAlign.Center,
+                )
             }
         },
     ) { padding ->
@@ -117,7 +178,14 @@ fun ProfileScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    ProfileAvatarView(name = user.displayName, remoteUrl = user.avatarUrl, size = 64.dp)
+                    ProfilePhotoButton(
+                        name = user.displayName,
+                        remoteUrl = user.avatarUrl,
+                        hasAvatar = hasAvatar,
+                        isUploading = isUploadingAvatar,
+                        onPickPhoto = { if (!isUploadingAvatar) photoPicker.launch("image/*") },
+                        onRemovePhoto = { if (!isUploadingAvatar) onDeleteAvatar() },
+                    )
                     Text(
                         text = user.displayName,
                         modifier = Modifier.weight(1f),
@@ -200,6 +268,89 @@ fun ProfileScreen(
             }
 
             item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Previous Tee Times",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = LinksideColors.TextPrimary,
+                    )
+                    if (previousTeeTimes.isEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(LinksideColors.Card)
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Default.History,
+                                contentDescription = null,
+                                tint = LinksideColors.TextSecondary,
+                            )
+                            Text(
+                                "No previous rounds yet",
+                                color = LinksideColors.TextSecondary,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    } else {
+                        previousTeeTimes.forEach { teeTime ->
+                            PreviousTeeTimeRow(
+                                teeTime = teeTime,
+                                score = roundScores[teeTime.id],
+                                onClick = { onPreviousTeeTimeClick(teeTime.id) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (declinedTeeTimes.isNotEmpty() || declinedTrips.isNotEmpty()) {
+                val now = Instant.now()
+
+                item {
+                    SectionHeader(title = "DECLINES", accentColor = LinksideColors.Accent)
+                }
+
+                if (declinedTeeTimes.isNotEmpty()) {
+                    item { DeclinesSectionLabel("Tee Times") }
+                    items(declinedTeeTimes, key = { "declined_tt_${it.id}" }) { teeTime ->
+                        DeclinedTeeTimeRow(
+                            teeTime = teeTime,
+                            upcoming = teeTime.parsedInstant()?.isAfter(now) == true,
+                            onClick = { onDeclinedTeeTimeClick(teeTime.id) },
+                        )
+                    }
+                }
+
+                if (declinedTrips.isNotEmpty()) {
+                    item { DeclinesSectionLabel("Trips") }
+                    items(declinedTrips, key = { "declined_trip_${it.id}" }) { trip ->
+                        DeclinedTripRow(
+                            trip = trip,
+                            upcoming = trip.parsedEnd()?.isAfter(now) == true,
+                            onClick = { onDeclinedTripClick(trip.id) },
+                        )
+                    }
+                }
+            }
+
+            if (withdrawnTournaments.isNotEmpty()) {
+                item {
+                    SectionHeader(title = "WITHDRAWN TOURNAMENTS", accentColor = LinksideColors.Accent)
+                }
+                items(withdrawnTournaments, key = { "withdrawn_tourn_${it.id}" }) { tournament ->
+                    WithdrawnTournamentRow(
+                        tournament = tournament,
+                        onClick = { onWithdrawnTournamentClick(tournament.id) },
+                    )
+                }
+            }
+
+            item {
                 SectionHeader(title = "SIGN-IN METHOD", accentColor = LinksideColors.Accent)
             }
 
@@ -211,21 +362,37 @@ fun ProfileScreen(
                         icon = primaryAuthIcon(primary),
                         showCheck = true,
                     )
-                    if (primary != PrimaryAuthMethod.EMAIL && !user.email.isNullOrBlank()) {
-                        SignInMethodCard(
-                            title = "Email & Password linked",
-                            subtitle = user.email,
-                            icon = Icons.Default.Email,
-                            showCheck = false,
-                        )
+                    if (primary != PrimaryAuthMethod.EMAIL) {
+                        if (!user.email.isNullOrBlank()) {
+                            SignInMethodCard(
+                                title = "Email & Password linked",
+                                subtitle = user.email,
+                                icon = Icons.Default.Email,
+                                showCheck = false,
+                            )
+                        } else {
+                            ProfilePlaceholderRow(
+                                icon = Icons.Default.Email,
+                                text = "Link Email & Password",
+                                onClick = onLinkEmail,
+                            )
+                        }
                     }
-                    if (primary != PrimaryAuthMethod.GOOGLE && !user.googleId.isNullOrBlank()) {
-                        SignInMethodCard(
-                            title = "Google Account linked",
-                            subtitle = null,
-                            icon = Icons.Default.Email,
-                            showCheck = false,
-                        )
+                    if (primary != PrimaryAuthMethod.GOOGLE) {
+                        if (!user.googleId.isNullOrBlank()) {
+                            SignInMethodCard(
+                                title = "Google Account linked",
+                                subtitle = null,
+                                icon = Icons.Default.Email,
+                                showCheck = false,
+                            )
+                        } else {
+                            ProfilePlaceholderRow(
+                                icon = Icons.Default.Email,
+                                text = if (isLinkingGoogle) "Linking Google…" else "Link Google Account",
+                                onClick = { if (!isLinkingGoogle) onLinkGoogle() },
+                            )
+                        }
                     }
                     if (primary != PrimaryAuthMethod.PHONE && !user.phone.isNullOrBlank()) {
                         SignInMethodCard(
@@ -324,6 +491,192 @@ fun ProfileScreen(
 
             item { Spacer(modifier = Modifier.size(24.dp)) }
         }
+    }
+}
+
+@Composable
+private fun ProfilePhotoButton(
+    name: String,
+    remoteUrl: String?,
+    hasAvatar: Boolean,
+    isUploading: Boolean,
+    onPickPhoto: () -> Unit,
+    onRemovePhoto: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.size(72.dp),
+        contentAlignment = Alignment.BottomEnd,
+    ) {
+        ProfileAvatarView(
+            name = name,
+            remoteUrl = remoteUrl,
+            size = 64.dp,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .semantics { contentDescription = "Choose profile photo" }
+                .clickable(enabled = !isUploading, onClick = onPickPhoto),
+        )
+
+        when {
+            isUploading -> {
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .offset(x = 2.dp, y = 2.dp)
+                        .clip(CircleShape)
+                        .background(LinksideColors.Card),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        strokeWidth = 1.5.dp,
+                        color = LinksideColors.AccentLabel,
+                    )
+                }
+            }
+            hasAvatar -> {
+                IconButton(
+                    onClick = onRemovePhoto,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .offset(x = 4.dp, y = 4.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.6f)),
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Remove profile photo",
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+            else -> {
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .offset(x = 4.dp, y = 4.dp)
+                        .clip(CircleShape)
+                        .background(LinksideColors.Primary)
+                        .clickable(onClick = onPickPhoto),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.PhotoCamera,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(11.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviousTeeTimeRow(
+    teeTime: TeeTime,
+    score: Int?,
+    onClick: () -> Unit,
+) {
+    val badgeLabel = if (score != null) "Score $score" else "View Round"
+    val badgeColor = if (score != null) LinksideColors.Success else LinksideColors.AccentLabel
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(LinksideColors.Card)
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.SportsGolf,
+            contentDescription = null,
+            tint = LinksideColors.AccentLabel,
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                teeTime.courseName,
+                fontWeight = FontWeight.SemiBold,
+                color = LinksideColors.TextPrimary,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                teeTime.formattedDate(),
+                color = LinksideColors.TextSecondary,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        Text(
+            text = badgeLabel,
+            fontWeight = FontWeight.SemiBold,
+            color = badgeColor,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(badgeColor.copy(alpha = 0.14f))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = LinksideColors.TextSecondary,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+@Composable
+private fun WithdrawnTournamentRow(
+    tournament: Tournament,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .background(LinksideColors.Card)
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.EmojiEvents,
+            contentDescription = null,
+            tint = LinksideColors.AccentLabel,
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                tournament.name,
+                fontWeight = FontWeight.SemiBold,
+                color = LinksideColors.TextPrimary,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                "${tournament.courseName} · ${tournament.formattedDate()}",
+                color = LinksideColors.TextSecondary,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Text(
+            "Withdrawn",
+            color = LinksideColors.Danger,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                .background(LinksideColors.Danger.copy(alpha = 0.14f))
+                .padding(horizontal = 8.dp, vertical = 5.dp),
+        )
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = LinksideColors.TextSecondary,
+        )
     }
 }
 

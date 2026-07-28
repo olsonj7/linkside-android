@@ -113,17 +113,23 @@ fun DarkActionButton(
     title: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     icon: ImageVector? = null,
 ) {
-    Button(
+    // Matches iOS GoogleSignInButton: Theme.card + secondary stroke.
+    OutlinedButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp),
         shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.buttonColors(
+        border = BorderStroke(1.dp, LinksideColors.TextSecondary.copy(alpha = 0.3f)),
+        colors = ButtonDefaults.outlinedButtonColors(
             containerColor = LinksideColors.Card,
             contentColor = LinksideColors.TextPrimary,
+            disabledContainerColor = LinksideColors.Card.copy(alpha = 0.5f),
+            disabledContentColor = LinksideColors.TextPrimary.copy(alpha = 0.5f),
         ),
     ) {
         Row {

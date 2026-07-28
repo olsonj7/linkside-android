@@ -34,8 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.linkside.app.data.api.PhoneUtils
 import com.linkside.app.ui.components.PrimaryButton
@@ -54,7 +52,10 @@ fun EmailAuthScreen(
         lastName: String,
         phone: String,
         smsConsent: Boolean,
+        phoneCode: String,
     ) -> Unit,
+    onSendPhoneCode: (phone: String, onComplete: (success: Boolean) -> Unit) -> Unit,
+    onForgotPassword: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var isRegistering by rememberSaveable { mutableStateOf(false) }
@@ -63,11 +64,15 @@ fun EmailAuthScreen(
     var firstName by rememberSaveable { mutableStateOf("") }
     var lastName by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
+    var phoneCode by rememberSaveable { mutableStateOf("") }
+    var isCodeSent by rememberSaveable { mutableStateOf(false) }
+    var isSendingCode by rememberSaveable { mutableStateOf(false) }
     var smsConsent by rememberSaveable { mutableStateOf(true) }
 
     val trimmedEmail = email.trim()
     val isEmailValid = PhoneUtils.isValidEmail(trimmedEmail)
     val isPasswordValid = password.length >= 6
+    val phoneValid = PhoneUtils.isValidPhone(phone)
     val canSubmit = when {
         isLoading -> false
         isRegistering -> {
@@ -75,13 +80,16 @@ fun EmailAuthScreen(
                 isPasswordValid &&
                 firstName.trim().isNotEmpty() &&
                 lastName.trim().isNotEmpty() &&
-                PhoneUtils.isValidPhone(phone)
+                phoneValid &&
+                isCodeSent &&
+                phoneCode.trim().isNotEmpty()
         }
         else -> isEmailValid && isPasswordValid
     }
 
     Scaffold(
         modifier = modifier,
+        containerColor = LinksideColors.Primary,
         topBar = {
             TopAppBar(
                 title = {
@@ -92,6 +100,11 @@ fun EmailAuthScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = LinksideColors.Primary,
+                    titleContentColor = LinksideColors.TextPrimary,
+                    navigationIconContentColor = LinksideColors.TextPrimary,
+                ),
             )
         },
     ) { padding ->
@@ -107,6 +120,7 @@ fun EmailAuthScreen(
                 text = if (isRegistering) "Create Account" else "Sign In",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
+                color = LinksideColors.TextPrimary,
             )
             Text(
                 text = if (isRegistering) {
@@ -145,17 +159,63 @@ fun EmailAuthScreen(
             if (isRegistering) {
                 AuthField(
                     value = phone,
-                    onValueChange = { phone = it },
+                    onValueChange = {
+                        phone = it
+                        isCodeSent = false
+                        phoneCode = ""
+                    },
                     label = "Phone",
                     placeholder = "(555) 555-5555",
                     keyboardType = KeyboardType.Phone,
                 )
-                if (phone.isNotBlank() && !PhoneUtils.isValidPhone(phone)) {
+                if (phone.isNotBlank() && !phoneValid) {
                     Text(
                         "Enter a valid phone number.",
                         color = LinksideColors.Danger,
                         style = MaterialTheme.typography.labelSmall,
                     )
+                }
+                if (phoneValid) {
+                    if (!isCodeSent) {
+                        TextButton(
+                            onClick = {
+                                isSendingCode = true
+                                onSendPhoneCode(phone) { ok ->
+                                    if (ok) isCodeSent = true
+                                    isSendingCode = false
+                                }
+                            },
+                            enabled = !isSendingCode && !isLoading,
+                        ) {
+                            Text(
+                                if (isSendingCode) "Sending code…" else "Send verification code",
+                                color = LinksideColors.AccentLabel,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    } else {
+                        AuthField(
+                            value = phoneCode,
+                            onValueChange = { phoneCode = it.filter { ch -> ch.isDigit() }.take(6) },
+                            label = "Verification code",
+                            keyboardType = KeyboardType.Number,
+                        )
+                        TextButton(
+                            onClick = {
+                                isSendingCode = true
+                                onSendPhoneCode(phone) { _ ->
+                                    isSendingCode = false
+                                }
+                            },
+                            enabled = !isSendingCode && !isLoading,
+                        ) {
+                            Text(
+                                if (isSendingCode) "Sending…" else "Didn't get a code? Resend",
+                                color = LinksideColors.TextSecondary,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                    }
                 }
                 RowWithSwitch(
                     checked = smsConsent,
@@ -164,11 +224,10 @@ fun EmailAuthScreen(
                 )
             }
 
-            AuthField(
+            PasswordTextField(
                 value = password,
                 onValueChange = { password = it },
                 label = "Password",
-                isPassword = true,
             )
             if (isRegistering) {
                 Text(
@@ -189,7 +248,15 @@ fun EmailAuthScreen(
                 },
                 onClick = {
                     if (isRegistering) {
-                        onRegister(trimmedEmail, password, firstName.trim(), lastName.trim(), phone, smsConsent)
+                        onRegister(
+                            trimmedEmail,
+                            password,
+                            firstName.trim(),
+                            lastName.trim(),
+                            phone,
+                            smsConsent,
+                            phoneCode.trim(),
+                        )
                     } else {
                         onSignIn(trimmedEmail, password)
                     }
@@ -197,9 +264,18 @@ fun EmailAuthScreen(
                 enabled = canSubmit,
             )
 
+            if (!isRegistering) {
+                TextButton(onClick = onForgotPassword) {
+                    Text("Forgot password?", color = LinksideColors.Accent)
+                }
+            }
+
             TextButton(
-                onClick = { isRegistering = !isRegistering },
-                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    isRegistering = !isRegistering
+                    isCodeSent = false
+                    phoneCode = ""
+                },
             ) {
                 Text(
                     text = if (isRegistering) {
@@ -225,7 +301,6 @@ private fun AuthField(
     placeholder: String = label,
     keyboardType: KeyboardType = KeyboardType.Text,
     keyboardCapitalization: KeyboardCapitalization = KeyboardCapitalization.None,
-    isPassword: Boolean = false,
 ) {
     OutlinedTextField(
         value = value,
@@ -235,9 +310,8 @@ private fun AuthField(
         placeholder = { Text(placeholder) },
         singleLine = true,
         shape = RoundedCornerShape(14.dp),
-        visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(
-            keyboardType = if (isPassword) KeyboardType.Password else keyboardType,
+            keyboardType = keyboardType,
             capitalization = keyboardCapitalization,
         ),
     )

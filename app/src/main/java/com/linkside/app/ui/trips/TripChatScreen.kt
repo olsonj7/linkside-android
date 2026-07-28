@@ -5,24 +5,21 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -35,10 +32,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.linkside.app.data.model.TripChatMessage
 import com.linkside.app.data.model.User
+import com.linkside.app.ui.components.ChatBubble
+import com.linkside.app.ui.components.ChatSocial
+import com.linkside.app.ui.components.CreatePollSheet
+import com.linkside.app.ui.components.MentionCandidate
+import com.linkside.app.ui.components.MentionSuggestionList
+import com.linkside.app.ui.components.PollCard
 import com.linkside.app.ui.theme.LinksideColors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,15 +51,27 @@ fun TripChatScreen(
     user: User,
     messages: List<TripChatMessage>,
     isSending: Boolean,
+    isCreatingPoll: Boolean,
+    tripCreatorId: String,
+    mentionCandidates: List<MentionCandidate>,
     onBack: () -> Unit,
     onLoad: () -> Unit,
     onStartPolling: () -> Unit,
     onStopPolling: () -> Unit,
-    onSend: (String) -> Unit,
+    onSend: (String, List<String>) -> Unit,
+    onToggleReaction: (String, String) -> Unit,
+    onCreatePoll: (String, List<String>, Boolean) -> Unit,
+    onVotePoll: (String, List<String>) -> Unit,
+    onClosePoll: (String) -> Unit,
+    onDeletePoll: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var draft by remember { mutableStateOf("") }
+    var showCreatePoll by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val mentionMatches = ChatSocial.activeMentionQuery(draft)?.let {
+        ChatSocial.filterMentions(mentionCandidates, it)
+    }.orEmpty()
 
     LaunchedEffect(tripId) {
         onLoad()
@@ -112,9 +126,38 @@ fun TripChatScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(messages, key = { it.id }) { message ->
-                        MessageBubble(message = message, isMine = message.senderId == user.id)
+                        val poll = message.poll
+                        if (message.isPoll && poll != null) {
+                            PollCard(
+                                poll = poll,
+                                senderName = message.senderName,
+                                time = message.formattedTime(),
+                                canManage = poll.canManage(user.id, tripCreatorId),
+                                onVote = { ids -> onVotePoll(poll.id, ids) },
+                                onClose = { onClosePoll(poll.id) },
+                                onDelete = { onDeletePoll(poll.id) },
+                            )
+                        } else {
+                            ChatBubble(
+                                senderName = message.senderName,
+                                text = message.text,
+                                timeLabel = message.formattedTime(),
+                                isMine = message.senderId == user.id,
+                                reactions = message.reactions,
+                                myId = user.id,
+                                mentionCandidates = mentionCandidates,
+                                onToggleReaction = { emoji -> onToggleReaction(message.id, emoji) },
+                            )
+                        }
                     }
                 }
+            }
+
+            if (mentionMatches.isNotEmpty()) {
+                MentionSuggestionList(
+                    candidates = mentionMatches,
+                    onSelect = { candidate -> draft = ChatSocial.insertMention(candidate, draft) },
+                )
             }
 
             Row(
@@ -125,6 +168,13 @@ fun TripChatScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                IconButton(onClick = { showCreatePoll = true }) {
+                    Icon(
+                        Icons.Default.BarChart,
+                        contentDescription = "Create poll",
+                        tint = LinksideColors.AccentLabel,
+                    )
+                }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it },
@@ -136,8 +186,9 @@ fun TripChatScreen(
                 IconButton(
                     onClick = {
                         val text = draft
+                        val mentions = ChatSocial.mentionedUserIds(text, mentionCandidates)
                         draft = ""
-                        onSend(text)
+                        onSend(text, mentions)
                     },
                     enabled = draft.isNotBlank() && !isSending,
                 ) {
@@ -154,43 +205,16 @@ fun TripChatScreen(
             }
         }
     }
-}
 
-@Composable
-private fun MessageBubble(message: TripChatMessage, isMine: Boolean) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = if (isMine) Alignment.End else Alignment.Start,
-    ) {
-        if (!isMine) {
-            Text(
-                text = message.senderName,
-                style = MaterialTheme.typography.labelSmall,
-                color = LinksideColors.TextSecondary,
-                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp),
-            )
-        }
-        Box(
-            modifier = Modifier
-                .widthIn(max = 280.dp)
-                .background(
-                    color = if (isMine) LinksideColors.AccentLabelLight else LinksideColors.Card,
-                    shape = RoundedCornerShape(14.dp),
-                )
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Column {
-                Text(
-                    text = message.text,
-                    color = if (isMine) LinksideColors.TextPrimary else LinksideColors.TextPrimary,
-                )
-                Text(
-                    text = message.formattedTime(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = LinksideColors.TextTertiary,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-        }
+    if (showCreatePoll) {
+        CreatePollSheet(
+            isCreating = isCreatingPoll,
+            onDismiss = { showCreatePoll = false },
+            onCreate = { question, options, allowMultiple ->
+                onCreatePoll(question, options, allowMultiple)
+                showCreatePoll = false
+            },
+        )
     }
 }
+

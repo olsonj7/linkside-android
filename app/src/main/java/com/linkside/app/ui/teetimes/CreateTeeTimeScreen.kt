@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.ListAlt
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +55,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.linkside.app.data.model.FavoriteCourse
 import com.linkside.app.data.model.Friend
 import com.linkside.app.data.model.FriendGroup
 import com.linkside.app.data.model.GolfCourse
@@ -61,11 +63,13 @@ import com.linkside.app.data.model.PlayFormat
 import com.linkside.app.data.model.TeeTimeWindow
 import com.linkside.app.ui.components.LinksideTopAppBar
 import com.linkside.app.ui.components.PrimaryButton
+import com.linkside.app.ui.components.SecondaryButton
 import com.linkside.app.ui.theme.LinksideColors
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 private enum class TimeMode { Specific, Flexible }
@@ -82,6 +86,7 @@ fun CreateTeeTimeScreen(
     onBack: () -> Unit,
     onSearchCourses: (String) -> Unit,
     onClearCourseSearch: () -> Unit = {},
+    onToggleFavoriteCourse: (GolfCourse) -> Unit = {},
     onCreate: (
         courseName: String,
         courseId: String?,
@@ -92,8 +97,13 @@ fun CreateTeeTimeScreen(
         timeWindows: List<String>,
         playFormat: String?,
         greenFee: Double?,
+        holesCount: Int,
+        roundName: String?,
+        sendInvites: Boolean,
     ) -> Unit,
     modifier: Modifier = Modifier,
+    favoriteCourses: List<FavoriteCourse> = emptyList(),
+    contactStatuses: Map<String, com.linkside.app.data.model.ContactStatus> = emptyMap(),
 ) {
     var courseQuery by remember { mutableStateOf("") }
     var selectedCourse by remember { mutableStateOf<GolfCourse?>(null) }
@@ -102,6 +112,8 @@ fun CreateTeeTimeScreen(
     var timeMode by remember { mutableStateOf(TimeMode.Specific) }
     var selectedWindows by remember { mutableStateOf(setOf(TeeTimeWindow.ANY)) }
     var golfersNeeded by remember { mutableIntStateOf(defaultGroupSize.coerceIn(2, 4)) }
+    var holesCount by remember { mutableIntStateOf(18) }
+    var roundName by remember { mutableStateOf("") }
     var selectedPhones by remember { mutableStateOf(setOf<String>()) }
     var selectedFormat by remember { mutableStateOf<PlayFormat?>(null) }
     var greenFeeText by remember { mutableStateOf("") }
@@ -115,9 +127,24 @@ fun CreateTeeTimeScreen(
 
     val dateFormatter = remember { DateTimeFormatter.ofPattern("MMM d, yyyy") }
     val timeFormatter = remember { DateTimeFormatter.ofPattern("h:mm a") }
-    val showCourseResults = selectedCourse == null &&
-        courseQuery.trim().length >= 2 &&
-        courseResults.isNotEmpty()
+    val trimmedQuery = courseQuery.trim()
+    val favoritePlaceIds = remember(favoriteCourses) { favoriteCourses.map { it.placeId }.toSet() }
+    val filteredFavorites = remember(favoriteCourses, trimmedQuery) {
+        if (trimmedQuery.isEmpty()) {
+            emptyList()
+        } else {
+            favoriteCourses.filter { it.name.contains(trimmedQuery, ignoreCase = true) }
+        }
+    }
+    val filteredFavoritePlaceIds = remember(filteredFavorites) { filteredFavorites.map { it.placeId }.toSet() }
+    val searchResultsExcludingFavorites = remember(courseResults, filteredFavoritePlaceIds) {
+        courseResults.filterNot { it.placeId in filteredFavoritePlaceIds }
+    }
+    val showFavorites = selectedCourse == null && filteredFavorites.isNotEmpty()
+    val showSearchResults = selectedCourse == null &&
+        trimmedQuery.length >= 2 &&
+        searchResultsExcludingFavorites.isNotEmpty()
+    val showCourseDropdown = showFavorites || showSearchResults
 
     val selectedFriends = remember(savedGolfers, friendGroups, selectedPhones) {
         val seen = mutableSetOf<String>()
@@ -129,6 +156,13 @@ fun CreateTeeTimeScreen(
     }
 
     val canSend = selectedCourse != null && selectedPhones.isNotEmpty() && !isLoading
+    val canSaveWithoutInviting = selectedCourse != null && !isLoading
+
+    fun selectCourse(course: GolfCourse) {
+        selectedCourse = course
+        courseQuery = course.name
+        onClearCourseSearch()
+    }
 
     if (showFriendPicker) {
         InviteGolfersSheet(
@@ -137,12 +171,15 @@ fun CreateTeeTimeScreen(
             selectedPhones = selectedPhones,
             onSelectionChange = { selectedPhones = it },
             onDismiss = { showFriendPicker = false },
+            contactStatuses = contactStatuses,
         )
     }
 
     if (showDatePicker) {
+        // Material DatePicker works in UTC (millis = UTC midnight of the picked day),
+        // so seed and read the value in UTC to avoid an off-by-one date shift.
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = teeDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            initialSelectedDateMillis = teeDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -151,7 +188,7 @@ fun CreateTeeTimeScreen(
                     onClick = {
                         datePickerState.selectedDateMillis?.let { millis ->
                             teeDate = Instant.ofEpochMilli(millis)
-                                .atZone(ZoneId.systemDefault())
+                                .atZone(ZoneOffset.UTC)
                                 .toLocalDate()
                         }
                         showDatePicker = false
@@ -199,7 +236,7 @@ fun CreateTeeTimeScreen(
     Scaffold(
         modifier = modifier,
         containerColor = LinksideColors.Primary,
-        topBar = { LinksideTopAppBar(onBack = onBack) },
+        topBar = { LinksideTopAppBar(title = "New Tee Time", onBack = onBack) },
     ) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -267,7 +304,7 @@ fun CreateTeeTimeScreen(
                 }
             }
 
-            if (showCourseResults) {
+            if (showCourseDropdown) {
                 item {
                     Column(
                         modifier = Modifier
@@ -275,29 +312,100 @@ fun CreateTeeTimeScreen(
                             .clip(RoundedCornerShape(10.dp))
                             .background(LinksideColors.Card),
                     ) {
-                        courseResults.take(5).forEachIndexed { index, course ->
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectedCourse = course
-                                        courseQuery = course.name
-                                        onClearCourseSearch()
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                            ) {
-                                Text(course.name, fontWeight = FontWeight.Medium, color = LinksideColors.TextPrimary)
-                                course.address?.let {
-                                    Text(it, style = MaterialTheme.typography.bodySmall, color = LinksideColors.TextSecondary)
-                                }
-                            }
-                            if (index < courseResults.take(5).lastIndex) {
-                                Box(
+                        if (showFavorites) {
+                            Text(
+                                "Favorites",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = LinksideColors.AccentLabel,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            )
+                            filteredFavorites.forEachIndexed { index, fav ->
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(1.dp)
-                                        .background(LinksideColors.Muted),
+                                        .clickable {
+                                            selectCourse(
+                                                GolfCourse(
+                                                    name = fav.name,
+                                                    address = fav.address,
+                                                    placeId = fav.placeId,
+                                                ),
+                                            )
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = LinksideColors.AccentLabel,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(fav.name, fontWeight = FontWeight.Medium, color = LinksideColors.TextPrimary)
+                                        fav.address?.let {
+                                            Text(it, style = MaterialTheme.typography.bodySmall, color = LinksideColors.TextSecondary)
+                                        }
+                                    }
+                                }
+                                if (index < filteredFavorites.lastIndex || showSearchResults) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(1.dp)
+                                            .background(LinksideColors.Muted),
+                                    )
+                                }
+                            }
+                        }
+
+                        if (showSearchResults) {
+                            if (showFavorites) {
+                                Text(
+                                    "Search Results",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = LinksideColors.TextSecondary,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 )
+                            }
+                            searchResultsExcludingFavorites.take(5).forEachIndexed { index, course ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectCourse(course) }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(course.name, fontWeight = FontWeight.Medium, color = LinksideColors.TextPrimary)
+                                        course.address?.let {
+                                            Text(it, style = MaterialTheme.typography.bodySmall, color = LinksideColors.TextSecondary)
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = { onToggleFavoriteCourse(course) },
+                                        modifier = Modifier.size(36.dp),
+                                    ) {
+                                        val isFavorite = course.placeId in favoritePlaceIds
+                                        Icon(
+                                            imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                            contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                                            tint = LinksideColors.AccentLabel,
+                                        )
+                                    }
+                                }
+                                if (index < searchResultsExcludingFavorites.take(5).lastIndex) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(1.dp)
+                                            .background(LinksideColors.Muted),
+                                    )
+                                }
                             }
                         }
                     }
@@ -312,7 +420,20 @@ fun CreateTeeTimeScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text("Selected course:", color = LinksideColors.TextSecondary, style = MaterialTheme.typography.bodyMedium)
-                        Text(course.name, fontWeight = FontWeight.SemiBold, color = LinksideColors.TextPrimary)
+                        Text(
+                            course.name,
+                            fontWeight = FontWeight.SemiBold,
+                            color = LinksideColors.TextPrimary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = { onToggleFavoriteCourse(course) }) {
+                            val isFavorite = course.placeId in favoritePlaceIds
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                                tint = LinksideColors.AccentLabel,
+                            )
+                        }
                     }
                 }
             }
@@ -420,6 +541,23 @@ fun CreateTeeTimeScreen(
 
             item {
                 Text(
+                    text = "Round Name (optional)",
+                    fontWeight = FontWeight.Medium,
+                    color = LinksideColors.TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = roundName,
+                    onValueChange = { if (it.length <= 60) roundName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("e.g. Father's Day Round, Birthday Round") },
+                    singleLine = true,
+                )
+            }
+
+            item {
+                Text(
                     text = "Group size (including you)",
                     fontWeight = FontWeight.Medium,
                     color = LinksideColors.TextSecondary,
@@ -433,6 +571,26 @@ fun CreateTeeTimeScreen(
                             selected = golfersNeeded == value,
                             modifier = Modifier.weight(1f),
                             onClick = { golfersNeeded = value },
+                        )
+                    }
+                }
+            }
+
+            item {
+                Text(
+                    text = "Holes",
+                    fontWeight = FontWeight.Medium,
+                    color = LinksideColors.TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    listOf(9, 18).forEach { value ->
+                        HolesChip(
+                            value = value,
+                            selected = holesCount == value,
+                            modifier = Modifier.weight(1f),
+                            onClick = { holesCount = value },
                         )
                     }
                 }
@@ -543,26 +701,37 @@ fun CreateTeeTimeScreen(
                     emptyList()
                 }
 
+                fun submit(sendInvites: Boolean) {
+                    val course = selectedCourse ?: return
+                    onCreate(
+                        course.name,
+                        course.placeId,
+                        instant,
+                        golfersNeeded,
+                        selectedFriends,
+                        apiTimeMode,
+                        windows,
+                        selectedFormat?.raw,
+                        greenFee,
+                        holesCount,
+                        roundName.trim().takeIf { it.isNotEmpty() },
+                        sendInvites,
+                    )
+                }
+
                 PrimaryButton(
-                    title = if (isLoading) "Sending…" else "Send Invites",
-                    onClick = {
-                        val course = selectedCourse ?: return@PrimaryButton
-                        onCreate(
-                            course.name,
-                            course.placeId,
-                            instant,
-                            golfersNeeded,
-                            selectedFriends,
-                            apiTimeMode,
-                            windows,
-                            selectedFormat?.raw,
-                            greenFee,
-                        )
-                    },
+                    title = if (isLoading) "Saving…" else "Save & Invite",
+                    onClick = { submit(sendInvites = true) },
                     enabled = canSend,
                 )
+                Spacer(modifier = Modifier.height(12.dp))
+                SecondaryButton(
+                    title = "Save without inviting",
+                    onClick = { submit(sendInvites = false) },
+                    enabled = canSaveWithoutInviting,
+                )
                 Text(
-                    text = "Your tee time will be saved. Friends who aren't on Linkside yet will receive a personal text from you — you'll send each one individually.",
+                    text = "Your tee time will be saved along with any golfers you've selected, but they won't be invited yet. Come back to the tee time anytime and tap Send Invites.",
                     style = MaterialTheme.typography.bodySmall,
                     color = LinksideColors.TextSecondary,
                     modifier = Modifier.padding(top = 8.dp),
@@ -633,6 +802,26 @@ private fun GroupSizeChip(
 ) {
     Text(
         text = "$value",
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) LinksideColors.AccentLabel else LinksideColors.Muted)
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
+        color = if (selected) LinksideColors.OnGold else LinksideColors.TextPrimary,
+        fontWeight = FontWeight.SemiBold,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
+}
+
+@Composable
+private fun HolesChip(
+    value: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = "$value Holes",
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(if (selected) LinksideColors.AccentLabel else LinksideColors.Muted)

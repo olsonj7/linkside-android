@@ -6,6 +6,12 @@ data class Friend(
     val phone: String,
     val firstName: String,
     val lastName: String = "",
+    /**
+     * Device-contact phone-type label (e.g. "Mobile", "Home", "Work"). Only set
+     * when a single contact has more than one number, so the picker can tell them
+     * apart. Not persisted to the server.
+     */
+    val phoneLabel: String? = null,
 ) {
     val id: String get() = phone
 
@@ -74,6 +80,9 @@ data class ContactStatus(
     val registered: Boolean,
     val optedIn: Boolean,
 ) {
+    /** Registered app user or SMS-opted-in — same as iOS `canReceiveAutoSMS` / golfers "On Linkside". */
+    val isOnLinkside: Boolean get() = registered || optedIn
+
     val label: String
         get() = when {
             registered -> "In App"
@@ -81,6 +90,21 @@ data class ContactStatus(
             else -> "Not Yet"
         }
 }
+
+data class OptInMessageRequest(
+    val phone: String,
+    val name: String,
+    val hostName: String? = null,
+)
+
+data class ManualInvite(
+    val phone: String,
+    val name: String,
+    val optInLink: String = "",
+    val message: String,
+    val ok: Boolean = true,
+    val error: String? = null,
+)
 
 fun Friend.toPayload(): FriendPayload = FriendPayload(
     phone = phone,

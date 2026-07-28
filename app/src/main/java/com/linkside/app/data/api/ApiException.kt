@@ -34,12 +34,22 @@ object PhoneUtils {
 
 fun parseApiError(body: String?): String {
     if (body.isNullOrBlank()) return "Server error"
+    val trimmed = body.trim()
+    // Proxy / platform error pages (404, 502, etc.) come back as HTML — never
+    // surface raw markup to the user; show a friendly generic message instead.
+    if (trimmed.startsWith("<") ||
+        trimmed.contains("<!doctype", ignoreCase = true) ||
+        trimmed.contains("<html", ignoreCase = true)
+    ) {
+        return "Something went wrong. Please try again."
+    }
     return try {
-        val json = org.json.JSONObject(body)
+        val json = org.json.JSONObject(trimmed)
         json.optString("error").takeIf { it.isNotBlank() }
             ?: json.optString("message").takeIf { it.isNotBlank() }
-            ?: body
+            ?: "Server error"
     } catch (_: Exception) {
-        body
+        // Non-JSON, non-HTML body — cap length so we don't dump a huge blob.
+        trimmed.take(140)
     }
 }

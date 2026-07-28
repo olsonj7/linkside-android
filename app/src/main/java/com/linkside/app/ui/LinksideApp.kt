@@ -15,6 +15,7 @@ import androidx.navigation.navArgument
 import com.linkside.app.LinksideApplication
 import com.linkside.app.auth.GoogleSignInHelper
 import com.linkside.app.ui.auth.EmailAuthScreen
+import com.linkside.app.ui.auth.ForgotPasswordScreen
 import com.linkside.app.ui.auth.OnboardingScreen
 import com.linkside.app.ui.auth.PhoneLoginScreen
 import com.linkside.app.ui.auth.VerifyCodeScreen
@@ -22,12 +23,19 @@ import com.linkside.app.ui.auth.WelcomeScreen
 import com.linkside.app.ui.navigation.MainTabShell
 import com.linkside.app.ui.navigation.Routes
 import com.linkside.app.ui.navigation.decodeRoute
+import com.linkside.app.push.PushTokenManager
 import com.linkside.app.ui.splash.SplashScreen
 import com.linkside.app.viewmodel.AuthViewModel
 import com.linkside.app.viewmodel.GolfersViewModel
+import com.linkside.app.viewmodel.IdeaThreadViewModel
+import com.linkside.app.viewmodel.NotificationsViewModel
 import com.linkside.app.viewmodel.TeeTimeViewModel
+import com.linkside.app.viewmodel.TournamentViewModel
 import com.linkside.app.viewmodel.TripViewModel
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 
 @Composable
@@ -49,11 +57,30 @@ fun LinksideApp(
     val tripViewModel: TripViewModel = viewModel(
         factory = TripViewModel.Factory(app.linksideRepository),
     )
+    val ideaThreadViewModel: IdeaThreadViewModel = viewModel(
+        factory = IdeaThreadViewModel.Factory(app.linksideRepository),
+    )
+    val notificationsViewModel: NotificationsViewModel = viewModel(
+        factory = NotificationsViewModel.Factory(app.linksideRepository),
+    )
+    val tournamentViewModel: TournamentViewModel = viewModel(
+        factory = TournamentViewModel.Factory(app.linksideRepository),
+    )
 
     val uiState by authViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
+    var pendingLinkPhone by remember { mutableStateOf<String?>(null) }
+
+    fun signOutFully() {
+        scope.launch {
+            PushTokenManager.unregisterFromServer(app.linksideRepository)
+            PushTokenManager.clearCache(context)
+            golfersViewModel.clearLocalData()
+            authViewModel.signOut()
+        }
+    }
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let { message ->
@@ -74,7 +101,33 @@ fun LinksideApp(
                         onContinue = { firstName, lastName ->
                             authViewModel.updateProfile(firstName, lastName) {}
                         },
+                        onSignOut = { signOutFully() },
                     )
+                }
+
+                user.needsPhoneEntry -> {
+                    when (val phone = pendingLinkPhone) {
+                        null -> PhoneLoginScreen(
+                            isLoading = uiState.isLoading,
+                            title = "Add your phone",
+                            subtitle = "Linkside uses your number for tee time invites and SMS RSVPs.",
+                            onSignOut = {
+                                pendingLinkPhone = null
+                                signOutFully()
+                            },
+                            onSendCode = { number ->
+                                authViewModel.sendCode(number) { pendingLinkPhone = number }
+                            },
+                        )
+                        else -> VerifyCodeScreen(
+                            phone = phone,
+                            isLoading = uiState.isLoading,
+                            onBack = { pendingLinkPhone = null },
+                            onVerify = { code ->
+                                authViewModel.linkPhone(phone, code) { pendingLinkPhone = null }
+                            },
+                        )
+                    }
                 }
 
                 else -> {
@@ -84,11 +137,11 @@ fun LinksideApp(
                         golfersViewModel = golfersViewModel,
                         teeTimeViewModel = teeTimeViewModel,
                         tripViewModel = tripViewModel,
+                        ideaThreadViewModel = ideaThreadViewModel,
+                        notificationsViewModel = notificationsViewModel,
+                        tournamentViewModel = tournamentViewModel,
                         onDarkModeChange = onDarkModeChange,
-                        onSignOut = {
-                            golfersViewModel.clearLocalData()
-                            authViewModel.signOut()
-                        },
+                        onSignOut = { signOutFully() },
                     )
                 }
             }
@@ -124,6 +177,7 @@ fun LinksideApp(
                 composable(Routes.PhoneLogin) {
                     PhoneLoginScreen(
                         isLoading = uiState.isLoading,
+                        onBack = { navController.popBackStack() },
                         onSendCode = { phone ->
                             authViewModel.sendCode(phone) {
                                 navController.navigate(Routes.verifyCode(phone))
@@ -140,7 +194,7 @@ fun LinksideApp(
                                 navController.popBackStack(Routes.Welcome, inclusive = true)
                             }
                         },
-                        onRegister = { email, password, firstName, lastName, phone, smsConsent ->
+                        onRegister = { email, password, firstName, lastName, phone, smsConsent, phoneCode ->
                             authViewModel.emailRegister(
                                 email,
                                 password,
@@ -148,8 +202,28 @@ fun LinksideApp(
                                 lastName,
                                 phone,
                                 smsConsent,
+                                phoneCode,
                             ) {
                                 navController.popBackStack(Routes.Welcome, inclusive = true)
+                            }
+                        },
+                        onSendPhoneCode = { phone, onComplete ->
+                            authViewModel.sendPhoneVerificationCode(phone, onComplete)
+                        },
+                        onForgotPassword = { navController.navigate(Routes.ForgotPassword) },
+                    )
+                }
+                composable(Routes.ForgotPassword) {
+                    ForgotPasswordScreen(
+                        isLoading = uiState.isLoading,
+                        onBack = { navController.popBackStack() },
+                        onSendCode = { email, onSent ->
+                            authViewModel.forgotPassword(email, onSent)
+                        },
+                        onReset = { email, code, newPassword ->
+                            authViewModel.resetPassword(email, code, newPassword) {
+                                Toast.makeText(context, "Password updated. Sign in with your new password.", Toast.LENGTH_LONG).show()
+                                navController.popBackStack(Routes.EmailAuth, inclusive = false)
                             }
                         },
                     )
@@ -162,6 +236,7 @@ fun LinksideApp(
                     VerifyCodeScreen(
                         phone = phone,
                         isLoading = uiState.isLoading,
+                        onBack = { navController.popBackStack() },
                         onVerify = { code ->
                             authViewModel.verifyCode(phone, code) {
                                 navController.popBackStack(Routes.Welcome, inclusive = true)

@@ -25,8 +25,11 @@ data class TripUiState(
     val tripTeeTimes: Map<String, List<TeeTime>> = emptyMap(),
     val tripPhotos: Map<String, List<Photo>> = emptyMap(),
     val tripMessages: Map<String, List<TripChatMessage>> = emptyMap(),
+    val tripAnnouncements: Map<String, List<com.linkside.app.data.model.TripAnnouncement>> = emptyMap(),
     val isLoading: Boolean = false,
     val isSendingMessage: Boolean = false,
+    val isCreatingPoll: Boolean = false,
+    val isPostingAnnouncement: Boolean = false,
     val isUploadingPhoto: Boolean = false,
     val errorMessage: String? = null,
 )
@@ -75,11 +78,13 @@ class TripViewModel(
                 val trip = repository.fetchGolfTrip(id)
                 val teeTimes = repository.fetchTripTeeTimes(id)
                 val photos = repository.fetchTripPhotos(id)
+                val announcements = repository.fetchTripAnnouncements(id)
                 upsertTrip(trip)
                 _uiState.update { state ->
                     state.copy(
                         tripTeeTimes = state.tripTeeTimes + (id to teeTimes),
                         tripPhotos = state.tripPhotos + (id to photos),
+                        tripAnnouncements = state.tripAnnouncements + (id to announcements),
                         isLoading = false,
                     )
                 }
@@ -89,13 +94,45 @@ class TripViewModel(
         }
     }
 
+    fun postAnnouncement(tripId: String, message: String, onSuccess: () -> Unit = {}) {
+        val trimmed = message.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isPostingAnnouncement = true, errorMessage = null) }
+            try {
+                val announcement = repository.postTripAnnouncement(tripId, trimmed)
+                _uiState.update { state ->
+                    val existing = state.tripAnnouncements[tripId].orEmpty()
+                    state.copy(
+                        tripAnnouncements = state.tripAnnouncements + (tripId to (listOf(announcement) + existing)),
+                        isPostingAnnouncement = false,
+                    )
+                }
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isPostingAnnouncement = false, errorMessage = e.message) }
+            }
+        }
+    }
+
     fun rsvpTrip(tripId: String, status: InviteStatus) {
+        val user = currentUser
+        // Optimistic update so Home hides and Profile declined list updates immediately.
+        _uiState.update { state ->
+            state.copy(
+                trips = state.trips.map { trip ->
+                    if (trip.id != tripId) trip
+                    else trip.withInviteStatusFor(user, status)
+                },
+            )
+        }
         viewModelScope.launch {
             try {
                 val updated = repository.rsvpGolfTrip(tripId, status.raw)
                 upsertTrip(updated)
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = e.message) }
+                loadTrips()
             }
         }
     }
@@ -150,13 +187,13 @@ class TripViewModel(
         chatPollJob = null
     }
 
-    fun sendMessage(tripId: String, text: String, onSent: () -> Unit = {}) {
+    fun sendMessage(tripId: String, text: String, mentions: List<String> = emptyList(), onSent: () -> Unit = {}) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
         viewModelScope.launch {
             _uiState.update { it.copy(isSendingMessage = true, errorMessage = null) }
             try {
-                val message = repository.sendTripMessage(tripId, trimmed)
+                val message = repository.sendTripMessage(tripId, trimmed, mentions)
                 _uiState.update { state ->
                     val existing = state.tripMessages[tripId].orEmpty()
                     state.copy(
@@ -168,6 +205,99 @@ class TripViewModel(
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSendingMessage = false, errorMessage = e.message) }
             }
+        }
+    }
+
+    /** Toggle the current user's emoji reaction on a trip chat message. */
+    fun toggleReaction(tripId: String, messageId: String, emoji: String) {
+        viewModelScope.launch {
+            try {
+                val updated = repository.toggleTripReaction(tripId, messageId, emoji)
+                _uiState.update { state ->
+                    val existing = state.tripMessages[tripId].orEmpty()
+                    state.copy(
+                        tripMessages = state.tripMessages +
+                            (tripId to existing.map { if (it.id == updated.id) updated else it }),
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun createPoll(
+        tripId: String,
+        question: String,
+        options: List<String>,
+        allowMultiple: Boolean,
+        onSuccess: () -> Unit = {},
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCreatingPoll = true, errorMessage = null) }
+            try {
+                val message = repository.createTripPoll(tripId, question, options, allowMultiple)
+                _uiState.update { state ->
+                    val existing = state.tripMessages[tripId].orEmpty()
+                    state.copy(
+                        tripMessages = state.tripMessages + (tripId to (existing + message)),
+                        isCreatingPoll = false,
+                    )
+                }
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isCreatingPoll = false, errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun votePoll(tripId: String, pollId: String, optionIds: List<String>) {
+        viewModelScope.launch {
+            try {
+                val poll = repository.votePoll(pollId, optionIds)
+                updatePoll(tripId, poll)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun closePoll(tripId: String, pollId: String) {
+        viewModelScope.launch {
+            try {
+                val poll = repository.closePoll(pollId)
+                updatePoll(tripId, poll)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun deletePoll(tripId: String, pollId: String) {
+        viewModelScope.launch {
+            try {
+                repository.deletePoll(pollId)
+                _uiState.update { state ->
+                    val existing = state.tripMessages[tripId].orEmpty()
+                    state.copy(
+                        tripMessages = state.tripMessages +
+                            (tripId to existing.filterNot { it.poll?.id == pollId }),
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = e.message) }
+            }
+        }
+    }
+
+    private fun updatePoll(tripId: String, poll: com.linkside.app.data.model.Poll) {
+        _uiState.update { state ->
+            val existing = state.tripMessages[tripId].orEmpty()
+            state.copy(
+                tripMessages = state.tripMessages + (tripId to existing.map { msg ->
+                    if (msg.poll?.id == poll.id) msg.copy(poll = poll) else msg
+                }),
+            )
         }
     }
 
@@ -196,7 +326,13 @@ class TripViewModel(
         return _uiState.value.trips.filter { trip ->
             val end = trip.parsedEnd() ?: trip.parsedStart()
             end == null || end.isAfter(now.minusSeconds(24 * 3600))
-        }.filter { !it.isDeclinedBy(user) || it.isActiveDeclined(user) }
+        }.filter { !it.isDeclinedBy(user) }
+    }
+
+    fun declinedTrips(user: User?): List<GolfTrip> {
+        return _uiState.value.trips
+            .filter { it.isActiveDeclined(user) }
+            .sortedByDescending { it.parsedStart() ?: Instant.EPOCH }
     }
 
     fun clearError() {
@@ -227,10 +363,4 @@ class TripViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             TripViewModel(repository) as T
     }
-}
-
-private fun GolfTrip.isActiveDeclined(user: User?): Boolean {
-    if (!isDeclinedBy(user)) return false
-    val end = parsedEnd() ?: parsedStart() ?: return false
-    return end.isAfter(Instant.now().minusSeconds(24 * 3600))
 }

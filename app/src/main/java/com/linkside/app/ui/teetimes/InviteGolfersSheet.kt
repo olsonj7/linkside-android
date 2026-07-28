@@ -52,17 +52,22 @@ fun InviteGolfersSheet(
     selectedPhones: Set<String>,
     onSelectionChange: (Set<String>) -> Unit,
     onDismiss: () -> Unit,
+    contactStatuses: Map<String, com.linkside.app.data.model.ContactStatus> = emptyMap(),
+    /** When true (trip tee times), only the provided roster is selectable — no groups/contacts. */
+    tripRosterOnly: Boolean = false,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showContactPicker by remember { mutableStateOf(false) }
 
-    val allGolferPhones = remember(savedGolfers) { savedGolfers.map { it.phone }.toSet() }
+    val roster = savedGolfers
+    val allGolferPhones = remember(roster) { roster.map { it.phone }.toSet() }
     val allSelected = allGolferPhones.isNotEmpty() && allGolferPhones.all { it in selectedPhones }
 
-    val selectedInvitees = remember(groups, savedGolfers, selectedPhones) {
+    val selectedInvitees = remember(groups, roster, selectedPhones, tripRosterOnly) {
         val seen = mutableSetOf<String>()
         val combined = mutableListOf<Friend>()
-        (groups.flatMap { it.members } + savedGolfers).forEach { friend ->
+        val source = if (tripRosterOnly) roster else groups.flatMap { it.members } + roster
+        source.forEach { friend ->
             if (seen.add(friend.phone)) combined.add(friend)
         }
         combined
@@ -70,13 +75,19 @@ fun InviteGolfersSheet(
             .sortedBy { it.fullName.lowercase() }
     }
 
-    if (showContactPicker) {
+    if (showContactPicker && !tripRosterOnly) {
         ContactPickerSheet(
             contacts = savedGolfers,
             selectedPhones = selectedPhones,
+            contactStatuses = contactStatuses,
             onToggle = { phone ->
                 onSelectionChange(
                     if (phone in selectedPhones) selectedPhones - phone else selectedPhones + phone,
+                )
+            },
+            onSelectAll = { phones, allSelected ->
+                onSelectionChange(
+                    if (allSelected) selectedPhones - phones.toSet() else selectedPhones + phones,
                 )
             },
             onDone = { showContactPicker = false },
@@ -117,7 +128,7 @@ fun InviteGolfersSheet(
                     Spacer(modifier = Modifier.weight(1f))
                 }
                 Text(
-                    text = "Invite Golfers",
+                    text = if (tripRosterOnly) "Trip Golfers" else "Invite Golfers",
                     modifier = Modifier.weight(2f),
                     fontWeight = FontWeight.SemiBold,
                     color = LinksideColors.TextPrimary,
@@ -136,7 +147,7 @@ fun InviteGolfersSheet(
                     .padding(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp),
             ) {
-                if (groups.isNotEmpty()) {
+                if (!tripRosterOnly && groups.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
                             text = "Groups",
@@ -167,15 +178,64 @@ fun InviteGolfersSheet(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "Invited Golfers",
+                            text = if (tripRosterOnly) "Trip roster" else "Invited Golfers",
                             fontWeight = FontWeight.SemiBold,
                             color = LinksideColors.TextPrimary,
                             modifier = Modifier.weight(1f),
                         )
-                        LinkButton(title = "Pick from Golfers", onClick = { showContactPicker = true })
+                        if (!tripRosterOnly) {
+                            LinkButton(title = "Pick from Golfers", onClick = { showContactPicker = true })
+                        }
                     }
 
-                    if (selectedInvitees.isEmpty()) {
+                    if (tripRosterOnly) {
+                        if (roster.isEmpty()) {
+                            Text(
+                                text = "No golfers on this trip yet.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = LinksideColors.TextSecondary,
+                            )
+                        } else {
+                            roster.sortedBy { it.fullName.lowercase() }.forEach { friend ->
+                                val selected = friend.phone in selectedPhones
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(LinksideColors.Card)
+                                        .clickable {
+                                            onSelectionChange(
+                                                if (selected) selectedPhones - friend.phone
+                                                else selectedPhones + friend.phone,
+                                            )
+                                        }
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    ProfileAvatarView(name = friend.fullName, size = 36.dp)
+                                    Text(
+                                        text = friend.fullName,
+                                        modifier = Modifier.weight(1f),
+                                        color = LinksideColors.TextPrimary,
+                                    )
+                                    Icon(
+                                        imageVector = if (selected) {
+                                            Icons.Default.CheckCircle
+                                        } else {
+                                            Icons.Default.RadioButtonUnchecked
+                                        },
+                                        contentDescription = null,
+                                        tint = if (selected) {
+                                            LinksideColors.AccentLabel
+                                        } else {
+                                            LinksideColors.TextSecondary
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    } else if (selectedInvitees.isEmpty()) {
                         Text(
                             text = "Tap \"Pick from Golfers\" or select a group to add invited golfers.",
                             style = MaterialTheme.typography.bodySmall,

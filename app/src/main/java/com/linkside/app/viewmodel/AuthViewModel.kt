@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 data class AuthUiState(
     val isInitializing: Boolean = true,
     val isLoading: Boolean = false,
+    val isUploadingAvatar: Boolean = false,
     val user: User? = null,
     val errorMessage: String? = null,
 ) {
@@ -75,6 +76,20 @@ class AuthViewModel(
         }
     }
 
+    /** Phone OTP for email signup — does not toggle the global auth loading spinner. */
+    fun sendPhoneVerificationCode(phone: String, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(errorMessage = null) }
+            try {
+                repository.sendCode(phone)
+                onComplete(true)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = e.message) }
+                onComplete(false)
+            }
+        }
+    }
+
     fun verifyCode(phone: String, code: String, onSuccess: () -> Unit) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
@@ -120,12 +135,73 @@ class AuthViewModel(
         lastName: String,
         phone: String,
         smsConsent: Boolean,
+        phoneCode: String? = null,
         onSuccess: () -> Unit = {},
     ) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                val user = repository.emailRegister(email, password, firstName, lastName, phone, smsConsent)
+                val user = repository.emailRegister(
+                    email,
+                    password,
+                    firstName,
+                    lastName,
+                    phone,
+                    smsConsent,
+                    phoneCode,
+                )
+                _uiState.update { it.copy(isLoading = false, user = user) }
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun forgotPassword(email: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            try {
+                repository.forgotPassword(email)
+                _uiState.update { it.copy(isLoading = false) }
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun resetPassword(email: String, code: String, newPassword: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            try {
+                repository.resetPassword(email, code, newPassword)
+                _uiState.update { it.copy(isLoading = false) }
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun linkEmail(email: String, password: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            try {
+                val user = repository.linkEmail(email, password)
+                _uiState.update { it.copy(isLoading = false, user = user) }
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun linkGoogle(idToken: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            try {
+                val user = repository.linkGoogle(idToken)
                 _uiState.update { it.copy(isLoading = false, user = user) }
                 onSuccess()
             } catch (e: Exception) {
@@ -193,6 +269,32 @@ class AuthViewModel(
         }
     }
 
+    fun uploadAvatar(imageBytes: ByteArray, mimeType: String = "image/jpeg", onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUploadingAvatar = true, errorMessage = null) }
+            try {
+                val user = repository.uploadAvatar(imageBytes, mimeType)
+                _uiState.update { it.copy(isUploadingAvatar = false, user = user) }
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isUploadingAvatar = false, errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun deleteAvatar(onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUploadingAvatar = true, errorMessage = null) }
+            try {
+                val user = repository.deleteAvatar()
+                _uiState.update { it.copy(isUploadingAvatar = false, user = user) }
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isUploadingAvatar = false, errorMessage = e.message) }
+            }
+        }
+    }
+
     fun removeFavoriteCourse(placeId: String) {
         val current = _uiState.value.user?.favoriteCourses.orEmpty()
         updateFavoriteCourses(current.filter { it.placeId != placeId })
@@ -209,6 +311,15 @@ class AuthViewModel(
         updateFavoriteCourses(updated)
     }
 
+    fun toggleFavoriteCourse(course: com.linkside.app.data.model.GolfCourse) {
+        val current = _uiState.value.user?.favoriteCourses.orEmpty()
+        if (current.any { it.placeId == course.placeId }) {
+            removeFavoriteCourse(course.placeId)
+        } else {
+            addFavoriteCourse(course)
+        }
+    }
+
     fun refreshUser() {
         viewModelScope.launch {
             try {
@@ -216,6 +327,19 @@ class AuthViewModel(
                 _uiState.update { it.copy(user = user) }
             } catch (_: Exception) {
                 // ignore refresh failures on profile tab
+            }
+        }
+    }
+
+    fun linkPhone(phone: String, code: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            try {
+                val user = repository.linkPhone(phone, code)
+                _uiState.update { it.copy(user = user, isLoading = false) }
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, errorMessage = e.message) }
             }
         }
     }

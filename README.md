@@ -1,6 +1,17 @@
 # Linkside Android
 
-Bronze-tier Android client for Linkside. Shares the same Node/Express backend as iOS.
+Bronze-tier Android client for Linkside.
+
+## Repos & backend
+
+| Repo | What lives there |
+|------|------------------|
+| **`linkside-ios`** | iOS app + **`linkside-sms-backend/`** (Node API, Supabase, Twilio) |
+| **`linkside-android`** (this repo) | Android app only |
+
+All backend/API/DB changes go in **`linkside-ios`** on branch **`develop`** (dev Railway) → merge to **`main`** (prod Railway). This repo only needs client updates when endpoints or payloads change.
+
+**Bronze gap tracker:** see [BRONZE_PARITY.md](./BRONZE_PARITY.md) — rescan against iOS `ApiService.swift` and `Views/` when adding features.
 
 ## Week 3 (current)
 

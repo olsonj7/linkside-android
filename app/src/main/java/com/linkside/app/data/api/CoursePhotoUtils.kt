@@ -1,16 +1,29 @@
 package com.linkside.app.data.api
 
+import android.net.Uri
+import android.util.Log
 import com.linkside.app.BuildConfig
 
 object CoursePhotoUtils {
+    private const val TAG = "CoursePhoto"
+
+    /**
+     * Same URL shape as iOS `ApiService.coursePhotoURL`.
+     * Uses [Uri.encode] (percent-encoding, spaces as %20) — not `URLEncoder`
+     * (which uses + for spaces and can diverge from iOS/CFNetwork).
+     */
     fun photoUrl(placeId: String?, courseName: String): String? {
         val base = BuildConfig.API_BASE_URL.trimEnd('/')
-        if (!placeId.isNullOrBlank()) {
-            return "$base/courses/photo?placeId=${java.net.URLEncoder.encode(placeId, Charsets.UTF_8.name())}"
+        val url = when {
+            !placeId.isNullOrBlank() ->
+                "$base/courses/photo?placeId=${Uri.encode(placeId)}"
+            courseName.isNotBlank() ->
+                "$base/courses/photo?name=${Uri.encode(courseName)}"
+            else -> null
         }
-        if (courseName.isNotBlank()) {
-            return "$base/courses/photo?name=${java.net.URLEncoder.encode(courseName, Charsets.UTF_8.name())}"
+        if (BuildConfig.DEBUG && url != null) {
+            Log.d(TAG, "photoUrl placeId=$placeId name=$courseName → $url")
         }
-        return null
+        return url
     }
 }

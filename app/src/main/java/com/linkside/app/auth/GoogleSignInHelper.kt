@@ -5,7 +5,8 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import androidx.credentials.exceptions.NoCredentialException
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.linkside.app.BuildConfig
 import com.linkside.app.data.api.ApiException
@@ -13,15 +14,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 object GoogleSignInHelper {
+    /**
+     * Explicit "Continue with Google" button flow.
+     * Uses [GetSignInWithGoogleOption] (full account picker), not One Tap —
+     * One Tap often returns "No credentials available" for first-time sign-in.
+     */
     suspend fun signIn(context: Context): Result<String> = withContext(Dispatchers.Main) {
         try {
             val credentialManager = CredentialManager.create(context)
-            val googleIdOption = GetGoogleIdOption.Builder()
-                .setFilterByAuthorizedAccounts(false)
-                .setServerClientId(BuildConfig.GOOGLE_WEB_CLIENT_ID)
+            val signInOption = GetSignInWithGoogleOption.Builder(BuildConfig.GOOGLE_WEB_CLIENT_ID)
                 .build()
             val request = GetCredentialRequest.Builder()
-                .addCredentialOption(googleIdOption)
+                .addCredentialOption(signInOption)
                 .build()
             val result = credentialManager.getCredential(context, request)
             val credential = result.credential
@@ -35,6 +39,13 @@ object GoogleSignInHelper {
             }
         } catch (e: GetCredentialCancellationException) {
             Result.failure(e)
+        } catch (e: NoCredentialException) {
+            Result.failure(
+                ApiException(
+                    "No Google accounts available. Sign into a Google account on this device, " +
+                        "and confirm the Android OAuth client SHA-1 is registered in Google Cloud.",
+                ),
+            )
         } catch (e: Exception) {
             Result.failure(ApiException(e.message ?: "Google sign-in failed"))
         }

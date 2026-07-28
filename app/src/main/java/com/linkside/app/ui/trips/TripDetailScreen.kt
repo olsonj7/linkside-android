@@ -3,6 +3,7 @@ package com.linkside.app.ui.trips
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,17 +22,24 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MonetizationOn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,8 +54,8 @@ import com.linkside.app.data.model.Invite
 import com.linkside.app.data.model.InviteStatus
 import com.linkside.app.data.model.Photo
 import com.linkside.app.data.model.TeeTime
+import com.linkside.app.data.model.TripAnnouncement
 import com.linkside.app.data.model.User
-import com.linkside.app.ui.components.AccentPrimaryButton
 import com.linkside.app.ui.components.ActionRow
 import com.linkside.app.ui.components.CourseHeroPhoto
 import com.linkside.app.ui.components.HostingBadge
@@ -68,20 +75,23 @@ fun TripDetailScreen(
     user: User,
     teeTimes: List<TeeTime>,
     photos: List<Photo>,
+    announcements: List<TripAnnouncement>,
     isLoading: Boolean,
     isUploadingPhoto: Boolean,
+    isPostingAnnouncement: Boolean,
     onBack: () -> Unit,
     onRsvp: (InviteStatus) -> Unit,
-    onToggleDeposit: (paid: Boolean) -> Unit,
-    onToggleBalance: (paid: Boolean) -> Unit,
+    onToggleDeposit: (invite: Invite, paid: Boolean) -> Unit,
     onOpenChat: () -> Unit,
     onTeeTimeClick: (String) -> Unit,
     onUploadPhoto: (ByteArray, String) -> Unit,
+    onPostAnnouncement: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val myInvite = trip.myInvite(user)
     val isHost = trip.isHost(user)
+    var showPostAnnouncement by remember { mutableStateOf(false) }
     val photoUrl = CoursePhotoUtils.photoUrl(trip.resortPlaceId, trip.location)
     val progress = if (trip.golfersNeeded > 0) trip.yesCount.toFloat() / trip.golfersNeeded else 0f
 
@@ -184,20 +194,26 @@ fun TripDetailScreen(
             }
 
             item {
-                SectionHeader(title = "GOLFERS")
-            }
-
-            item {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy((-8).dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    trip.invites.filter { it.inviteStatus == InviteStatus.YES }.forEach { invite ->
-                        ProfileAvatarView(
-                            name = invite.name,
-                            size = 40.dp,
-                            modifier = Modifier.offset(x = 0.dp),
+                val attending = trip.invites.filter { it.inviteStatus == InviteStatus.YES }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionHeader(title = "GOLFERS")
+                    if (attending.isEmpty()) {
+                        Text(
+                            "No golfers confirmed yet.",
+                            color = LinksideColors.TextSecondary,
+                            style = MaterialTheme.typography.bodySmall,
                         )
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(LinksideColors.Card),
+                        ) {
+                            attending.forEach { invite ->
+                                GolferRow(invite = invite, isYou = invite.matchesUser(user))
+                            }
+                        }
                     }
                 }
             }
@@ -211,13 +227,24 @@ fun TripDetailScreen(
                             color = LinksideColors.TextSecondary,
                             style = MaterialTheme.typography.bodySmall,
                         )
-                        trip.invites.filter { it.inviteStatus == InviteStatus.YES }.forEach { invite ->
-                            DepositRow(
-                                invite = invite,
-                                isSelf = invite.matchesUser(user),
-                                enabled = !isLoading && invite.matchesUser(user) && !isHost,
-                                onToggle = onToggleDeposit,
-                            )
+                        if (isHost) {
+                            // Host manages everyone's deposit status.
+                            trip.invites.filter { it.isHost != true }.forEach { invite ->
+                                DepositRow(
+                                    invite = invite,
+                                    enabled = !isLoading,
+                                    onToggle = { paid -> onToggleDeposit(invite, paid) },
+                                )
+                            }
+                        } else {
+                            // Attendees only get a toggle for their own deposit.
+                            myInvite?.takeIf { it.isHost != true }?.let { invite ->
+                                SelfDepositRow(
+                                    paid = invite.depositPaid == true,
+                                    enabled = !isLoading,
+                                    onToggle = { paid -> onToggleDeposit(invite, paid) },
+                                )
+                            }
                         }
                     }
                 }
@@ -232,6 +259,40 @@ fun TripDetailScreen(
                             enabled = !isLoading,
                             onSelect = onRsvp,
                         )
+                    }
+                }
+            }
+
+            if (announcements.isNotEmpty() || isHost) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            SectionHeader(title = "ANNOUNCEMENTS")
+                            if (isHost) {
+                                LinkButton(title = "+ Post", onClick = { showPostAnnouncement = true })
+                            }
+                        }
+                        if (announcements.isEmpty()) {
+                            Text(
+                                text = if (isHost) {
+                                    "No announcements yet. Post an update to notify everyone on the trip."
+                                } else {
+                                    "No announcements yet."
+                                },
+                                color = LinksideColors.TextSecondary,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                announcements.forEach { announcement ->
+                                    AnnouncementRow(announcement = announcement)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -288,23 +349,163 @@ fun TripDetailScreen(
                 }
             }
 
-            item {
-                AccentPrimaryButton(
-                    title = "Add to Calendar",
-                    icon = Icons.Default.CalendarMonth,
-                    onClick = { /* calendar intent in follow-up */ },
-                )
-            }
-
             item { Spacer(modifier = Modifier.height(24.dp)) }
         }
+    }
+
+    if (showPostAnnouncement) {
+        PostAnnouncementDialog(
+            isPosting = isPostingAnnouncement,
+            onDismiss = { showPostAnnouncement = false },
+            onPost = { message ->
+                onPostAnnouncement(message)
+                showPostAnnouncement = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun AnnouncementRow(announcement: TripAnnouncement) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(LinksideColors.Card)
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(LinksideColors.GoldenBg),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.Campaign,
+                contentDescription = null,
+                tint = LinksideColors.Gold,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(announcement.message, color = LinksideColors.TextPrimary, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                announcement.formattedDate(),
+                color = LinksideColors.TextSecondary,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PostAnnouncementDialog(
+    isPosting: Boolean,
+    onDismiss: () -> Unit,
+    onPost: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { if (!isPosting) onDismiss() },
+        title = { Text("New Announcement") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "This message is saved to the trip's announcement log and pushed to everyone on the trip.",
+                    color = LinksideColors.TextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { if (it.length <= 1000) text = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Share an update…") },
+                    minLines = 3,
+                    maxLines = 6,
+                    enabled = !isPosting,
+                )
+                Text(
+                    "${text.length}/1000",
+                    color = LinksideColors.TextTertiary,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onPost(text.trim()) },
+                enabled = text.isNotBlank() && !isPosting,
+            ) {
+                Text(if (isPosting) "Sending…" else "Send", color = LinksideColors.AccentLabel)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isPosting) {
+                Text("Cancel", color = LinksideColors.TextSecondary)
+            }
+        },
+    )
+}
+
+@Composable
+private fun GolferRow(invite: Invite, isYou: Boolean) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ProfileAvatarView(name = invite.name, size = 36.dp)
+        Text(
+            text = if (isYou) "${invite.name} (You)" else invite.name,
+            modifier = Modifier.weight(1f),
+            color = LinksideColors.TextPrimary,
+            fontWeight = FontWeight.Medium,
+        )
+        if (invite.isHost == true) {
+            Text(
+                "Host",
+                style = MaterialTheme.typography.labelSmall,
+                color = LinksideColors.AccentLabel,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelfDepositRow(
+    paid: Boolean,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(LinksideColors.Card)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("My Deposit", modifier = Modifier.weight(1f), color = LinksideColors.TextPrimary)
+        StatusPill(
+            text = if (paid) "Paid" else "Unpaid",
+            background = if (paid) LinksideColors.AccentChipBackground else LinksideColors.Muted,
+            textColor = if (paid) LinksideColors.AccentLabel else LinksideColors.TextSecondary,
+            modifier = Modifier.clickable(enabled = enabled) { onToggle(!paid) },
+        )
     }
 }
 
 @Composable
 private fun DepositRow(
     invite: Invite,
-    isSelf: Boolean,
     enabled: Boolean,
     onToggle: (Boolean) -> Unit,
 ) {
@@ -324,6 +525,7 @@ private fun DepositRow(
             text = if (paid) "Paid" else "Unpaid",
             background = if (paid) LinksideColors.AccentChipBackground else LinksideColors.Muted,
             textColor = if (paid) LinksideColors.AccentLabel else LinksideColors.TextSecondary,
+            modifier = Modifier.clickable(enabled = enabled) { onToggle(!paid) },
         )
     }
 }

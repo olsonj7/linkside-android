@@ -1,20 +1,24 @@
 package com.linkside.app.ui.auth
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -26,14 +30,17 @@ fun OnboardingScreen(
     isLoading: Boolean,
     onContinue: (firstName: String, lastName: String) -> Unit,
     modifier: Modifier = Modifier,
+    onSignOut: (() -> Unit)? = null,
 ) {
     var firstName by rememberSaveable { mutableStateOf("") }
     var lastName by rememberSaveable { mutableStateOf("") }
-    val canContinue = firstName.trim().isNotEmpty()
+    val canContinue = firstName.trim().isNotEmpty() && lastName.trim().isNotEmpty()
 
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(LinksideColors.Primary)
+            .safeDrawingPadding()
             .padding(24.dp),
     ) {
         Spacer(modifier = Modifier.weight(1f))
@@ -42,6 +49,7 @@ fun OnboardingScreen(
             text = "What should we\ncall you?",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold,
+            color = LinksideColors.TextPrimary,
         )
         Text(
             text = "We'll use your name to personalize invites.",
@@ -63,7 +71,7 @@ fun OnboardingScreen(
             value = lastName,
             onValueChange = { lastName = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Last name (optional)") },
+            placeholder = { Text("Last name") },
             shape = RoundedCornerShape(14.dp),
             singleLine = true,
         )
@@ -77,5 +85,14 @@ fun OnboardingScreen(
         )
 
         Spacer(modifier = Modifier.weight(1f))
+
+        if (onSignOut != null) {
+            TextButton(
+                onClick = onSignOut,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) {
+                Text("Sign out", color = LinksideColors.TextSecondary)
+            }
+        }
     }
 }

@@ -21,9 +21,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.linkside.app.data.api.CoursePhotoUtils
 import com.linkside.app.data.model.Invite
 import com.linkside.app.data.model.InviteStatus
 import com.linkside.app.data.model.TeeTime
+import com.linkside.app.ui.components.CoursePhotoThumbnail
 import com.linkside.app.ui.components.HostingBadge
 import com.linkside.app.ui.components.themeCardShape
 import com.linkside.app.ui.theme.LinksideColors
@@ -37,6 +39,8 @@ fun TeeTimeCard(
     isHosting: Boolean = false,
 ) {
     val hasBorder = LinksideColors.CardBorder.alpha > 0f
+    val photoUrl = CoursePhotoUtils.photoUrl(teeTime.courseId, teeTime.courseName)
+    val isTripTeeTime = !teeTime.tripId.isNullOrBlank()
     Card(
         onClick = onClick,
         modifier = modifier
@@ -53,9 +57,19 @@ fun TeeTimeCard(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
+                        teeTime.roundName?.takeIf { it.isNotBlank() }?.let { name ->
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = LinksideColors.AccentLabel,
+                                modifier = Modifier.padding(bottom = 2.dp),
+                            )
+                        }
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -65,6 +79,7 @@ fun TeeTimeCard(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = LinksideColors.TextPrimary,
+                                modifier = Modifier.weight(1f, fill = false),
                             )
                             if (isHosting) HostingBadge()
                         }
@@ -73,54 +88,80 @@ fun TeeTimeCard(
                             color = LinksideColors.TextSecondary,
                             modifier = Modifier.padding(top = 4.dp),
                         )
+                        Text(
+                            text = "${teeTime.holesCount ?: 18} holes",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = LinksideColors.TextSecondary,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
                     }
-                    Text(
-                        text = "${teeTime.yesCount} of ${teeTime.golfersNeeded}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = LinksideColors.AccentLabel,
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        CoursePhotoThumbnail(url = photoUrl)
+                        Text(
+                            text = if (isTripTeeTime) {
+                                "${teeTime.invites.size} of ${teeTime.golfersNeeded}"
+                            } else {
+                                "${teeTime.yesCount} of ${teeTime.golfersNeeded}"
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = LinksideColors.AccentLabel,
+                        )
+                    }
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (teeTime.isFull) {
+                    if (isTripTeeTime) {
+                        // Trip tee times are assignments from trip participants — no RSVP status rows.
                         StatusRow(
-                            text = "FULL",
+                            text = "${teeTime.invites.size} Assigned",
                             background = LinksideColors.AccentChipBackground,
                             textColor = LinksideColors.AccentLabel,
+                            names = teeTime.invites.map { inviteLabel(it) },
                         )
-                    }
-                    if (teeTime.yesCount > 0) {
-                        StatusRow(
-                            text = "${teeTime.yesCount} Yes",
-                            background = LinksideColors.AccentChipBackground,
-                            textColor = LinksideColors.AccentLabel,
-                            names = teeTime.invites.filter { it.inviteStatus == InviteStatus.YES }.map { inviteLabel(it) },
-                        )
-                    }
-                    if (teeTime.maybeCount > 0) {
-                        StatusRow(
-                            text = "${teeTime.maybeCount} Maybe",
-                            background = LinksideColors.GoldenBg,
-                            textColor = LinksideColors.GoldenText,
-                            names = teeTime.invites.filter { it.inviteStatus == InviteStatus.MAYBE }.map { inviteLabel(it) },
-                        )
-                    }
-                    if (teeTime.noCount > 0) {
-                        StatusRow(
-                            text = "${teeTime.noCount} No",
-                            background = LinksideColors.Danger.copy(alpha = 0.15f),
-                            textColor = LinksideColors.Danger,
-                            names = teeTime.invites.filter { it.inviteStatus == InviteStatus.NO }.map { inviteLabel(it) },
-                        )
-                    }
-                    if (teeTime.waitingCount > 0) {
-                        StatusRow(
-                            text = "${teeTime.waitingCount} Waiting",
-                            background = LinksideColors.Terracotta.copy(alpha = 0.15f),
-                            textColor = LinksideColors.Terracotta,
-                            names = teeTime.invites.filter { it.inviteStatus == InviteStatus.WAITING }.map { inviteLabel(it) },
-                        )
+                    } else {
+                        if (teeTime.isFull) {
+                            StatusRow(
+                                text = "FULL",
+                                background = LinksideColors.AccentChipBackground,
+                                textColor = LinksideColors.AccentLabel,
+                            )
+                        }
+                        if (teeTime.yesCount > 0) {
+                            StatusRow(
+                                text = "${teeTime.yesCount} Yes",
+                                background = LinksideColors.AccentChipBackground,
+                                textColor = LinksideColors.AccentLabel,
+                                names = teeTime.invites.filter { it.inviteStatus == InviteStatus.YES }.map { inviteLabel(it) },
+                            )
+                        }
+                        if (teeTime.maybeCount > 0) {
+                            StatusRow(
+                                text = "${teeTime.maybeCount} Maybe",
+                                background = LinksideColors.GoldenBg,
+                                textColor = LinksideColors.GoldenText,
+                                names = teeTime.invites.filter { it.inviteStatus == InviteStatus.MAYBE }.map { inviteLabel(it) },
+                            )
+                        }
+                        if (teeTime.noCount > 0) {
+                            StatusRow(
+                                text = "${teeTime.noCount} No",
+                                background = LinksideColors.Danger.copy(alpha = 0.15f),
+                                textColor = LinksideColors.Danger,
+                                names = teeTime.invites.filter { it.inviteStatus == InviteStatus.NO }.map { inviteLabel(it) },
+                            )
+                        }
+                        if (teeTime.waitingCount > 0) {
+                            StatusRow(
+                                text = "${teeTime.waitingCount} Waiting",
+                                background = LinksideColors.Terracotta.copy(alpha = 0.15f),
+                                textColor = LinksideColors.Terracotta,
+                                names = teeTime.invites.filter { it.inviteStatus == InviteStatus.WAITING }.map { inviteLabel(it) },
+                            )
+                        }
                     }
                 }
             }

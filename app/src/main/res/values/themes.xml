@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Linkside" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Dark brand default — matches iOS Theme.background (#0A1F16) -->
+    <style name="Theme.Linkside" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/linkside_background</item>
+        <item name="android:statusBarColor">@color/linkside_background</item>
+        <item name="android:navigationBarColor">@color/linkside_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
 </resources>

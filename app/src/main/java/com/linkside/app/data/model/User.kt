@@ -38,7 +38,8 @@ data class User(
         }
 
     val needsNameEntry: Boolean
-        get() = firstName?.trim().orEmpty().isEmpty()
+        get() = firstName?.trim().orEmpty().isEmpty() ||
+            lastName?.trim().orEmpty().isEmpty()
 
     val needsPhoneEntry: Boolean
         get() {
@@ -84,12 +85,26 @@ data class EmailLoginRequest(
     val password: String,
 )
 
+data class ForgotPasswordRequest(val email: String)
+
+data class ResetPasswordRequest(
+    val email: String,
+    val code: String,
+    val newPassword: String,
+)
+
+data class LinkEmailRequest(
+    val email: String,
+    val password: String,
+)
+
 data class EmailRegisterRequest(
     val email: String,
     val password: String,
     val firstName: String? = null,
     val lastName: String? = null,
     val phone: String,
+    val phoneCode: String? = null,
     val smsConsent: Boolean = true,
 )
 

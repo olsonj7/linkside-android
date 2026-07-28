@@ -21,7 +21,9 @@ data class GolfersUiState(
     val contactStatuses: Map<String, ContactStatus> = emptyMap(),
     val isLoading: Boolean = false,
     val isSavingGroup: Boolean = false,
+    val isPreparingInvite: Boolean = false,
     val errorMessage: String? = null,
+    val inviteError: String? = null,
 )
 
 class GolfersViewModel(
@@ -33,13 +35,19 @@ class GolfersViewModel(
     fun syncFromServer() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            try {
-                val golfers = repository.fetchSavedGolfers()
-                val groups = repository.fetchFriendGroups()
-                _uiState.update { it.copy(golfers = golfers, groups = groups, isLoading = false) }
+            val golfersResult = runCatching { repository.fetchSavedGolfers() }
+            val groupsResult = runCatching { repository.fetchFriendGroups() }
+            _uiState.update { state ->
+                state.copy(
+                    golfers = golfersResult.getOrDefault(state.golfers),
+                    groups = groupsResult.getOrDefault(state.groups),
+                    isLoading = false,
+                    errorMessage = golfersResult.exceptionOrNull()?.message
+                        ?: groupsResult.exceptionOrNull()?.message,
+                )
+            }
+            if (golfersResult.isSuccess) {
                 refreshContactStatuses()
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, errorMessage = e.message) }
             }
         }
     }
@@ -56,6 +64,39 @@ class GolfersViewModel(
                 _uiState.update { it.copy(contactStatuses = statuses) }
             } catch (_: Exception) {
                 // Non-critical
+            }
+        }
+    }
+
+    fun contactStatus(phone: String): ContactStatus? {
+        val statuses = _uiState.value.contactStatuses
+        val normalized = com.linkside.app.data.api.PhoneUtils.normalizePhone(phone)
+        return statuses[normalized] ?: statuses[phone]
+    }
+
+    fun prepareAppInvite(
+        friend: Friend,
+        hostName: String?,
+        onReady: (phone: String, message: String) -> Unit,
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isPreparingInvite = true, inviteError = null) }
+            try {
+                val invite = repository.getOptInMessage(
+                    phone = friend.phone,
+                    name = friend.fullName,
+                    hostName = hostName,
+                )
+                _uiState.update { it.copy(isPreparingInvite = false) }
+                onReady(invite.phone.ifBlank { friend.phone }, invite.message)
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isPreparingInvite = false,
+                        inviteError = e.message
+                            ?: "Failed to prepare invite message. Please check your connection and try again.",
+                    )
+                }
             }
         }
     }
@@ -85,10 +126,19 @@ class GolfersViewModel(
     }
 
     fun createGroup(name: String, members: List<Friend>, onSuccess: () -> Unit = {}) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "Group name is required.") }
+            return
+        }
+        if (hasDuplicateGroupName(trimmed)) {
+            _uiState.update { it.copy(errorMessage = "A group named \"$trimmed\" already exists.") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isSavingGroup = true, errorMessage = null) }
             try {
-                val group = repository.createFriendGroup(name, members)
+                val group = repository.createFriendGroup(trimmed, members)
                 _uiState.update {
                     it.copy(groups = it.groups + group, isSavingGroup = false)
                 }
@@ -100,10 +150,19 @@ class GolfersViewModel(
     }
 
     fun updateGroup(group: FriendGroup, onSuccess: () -> Unit = {}) {
+        val trimmed = group.name.trim()
+        if (trimmed.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "Group name is required.") }
+            return
+        }
+        if (hasDuplicateGroupName(trimmed, excludingId = group.id)) {
+            _uiState.update { it.copy(errorMessage = "A group named \"$trimmed\" already exists.") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isSavingGroup = true, errorMessage = null) }
             try {
-                val updated = repository.updateFriendGroup(group)
+                val updated = repository.updateFriendGroup(group.copy(name = trimmed))
                 _uiState.update { state ->
                     state.copy(
                         groups = state.groups.map { if (it.id == updated.id) updated else it },
@@ -118,19 +177,43 @@ class GolfersViewModel(
     }
 
     fun deleteGroup(group: FriendGroup) {
+        val id = group.id.trim()
+        if (id.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "Group not found") }
+            return
+        }
         val previous = _uiState.value.groups
-        _uiState.update { it.copy(groups = it.groups.filterNot { g -> g.id == group.id }) }
+        _uiState.update { it.copy(groups = it.groups.filterNot { g -> g.id == group.id }, errorMessage = null) }
         viewModelScope.launch {
             try {
-                repository.deleteFriendGroup(group.id)
+                repository.deleteFriendGroup(id)
             } catch (e: Exception) {
-                _uiState.update { it.copy(groups = previous, errorMessage = e.message) }
+                // Re-sync so the list matches the server if the local id was stale.
+                try {
+                    val groups = repository.fetchFriendGroups()
+                    _uiState.update { it.copy(groups = groups, errorMessage = e.message) }
+                } catch (_: Exception) {
+                    _uiState.update { it.copy(groups = previous, errorMessage = e.message) }
+                }
             }
         }
     }
 
+    fun hasDuplicateGroupName(name: String, excludingId: String? = null): Boolean {
+        val needle = name.trim().lowercase()
+        if (needle.isEmpty()) return false
+        return _uiState.value.groups.any { group ->
+            group.name.trim().lowercase() == needle &&
+                (excludingId == null || !group.id.equals(excludingId, ignoreCase = true))
+        }
+    }
+
     fun clearError() {
-        _uiState.update { it.copy(errorMessage = null) }
+        _uiState.update { it.copy(errorMessage = null, inviteError = null) }
+    }
+
+    fun clearInviteError() {
+        _uiState.update { it.copy(inviteError = null) }
     }
 
     fun clearLocalData() {

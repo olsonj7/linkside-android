@@ -92,6 +92,7 @@ fun InviteDetailRow(
     isHost: Boolean,
     modifier: Modifier = Modifier,
     avatarUrl: String? = null,
+    showStatusPill: Boolean = true,
 ) {
     val (bg, fg) = inviteStatusColors(status)
     Row(
@@ -116,10 +117,12 @@ fun InviteDetailRow(
                 }
             }
         }
-        StatusPill(
-            text = status.raw.uppercase(),
-            background = bg,
-            textColor = fg,
-        )
+        if (showStatusPill) {
+            StatusPill(
+                text = status.raw.uppercase(),
+                background = bg,
+                textColor = fg,
+            )
+        }
     }
 }

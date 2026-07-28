@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -108,10 +107,11 @@ fun HomeProfileHeader(
 
 @Composable
 private fun tierBadge(tier: String) {
+    // Bronze is the default first-launch tier, so it gets no badge.
     val (label, color, icon) = when (tier) {
         "gold" -> Triple("Linkside Events", Color(0xFFFFD700), Icons.Default.EmojiEvents)
         "silver" -> Triple("Linkside Plus", Color(0xFFC0C0C0), Icons.Default.Star)
-        else -> Triple("Bronze", Color(0xFFCD7F32), Icons.Default.Person)
+        else -> return
     }
     Row(
         modifier = Modifier

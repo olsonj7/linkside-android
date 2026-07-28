@@ -7,11 +7,18 @@ import com.linkside.app.data.api.runApi
 import com.linkside.app.data.auth.TokenStore
 import com.linkside.app.data.model.EmailLoginRequest
 import com.linkside.app.data.model.EmailRegisterRequest
+import com.linkside.app.data.model.ForgotPasswordRequest
 import com.linkside.app.data.model.GoogleAuthRequest
 import com.linkside.app.data.model.SendCodeRequest
+import com.linkside.app.data.model.LinkEmailRequest
+import com.linkside.app.data.model.LinkPhoneRequest
+import com.linkside.app.data.model.ResetPasswordRequest
 import com.linkside.app.data.model.UpdateProfileRequest
 import com.linkside.app.data.model.User
 import com.linkside.app.data.model.VerifyCodeRequest
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class AuthRepository(
     private val api: LinksideApi,
@@ -81,6 +88,7 @@ class AuthRepository(
         lastName: String,
         phone: String,
         smsConsent: Boolean,
+        phoneCode: String? = null,
     ): User {
         val response = runApi {
             api.emailRegister(
@@ -90,6 +98,7 @@ class AuthRepository(
                     firstName = firstName.trim(),
                     lastName = lastName.trim(),
                     phone = PhoneUtils.normalizePhone(phone),
+                    phoneCode = phoneCode?.trim()?.takeIf { it.isNotEmpty() },
                     smsConsent = smsConsent,
                 ),
             )
@@ -141,6 +150,82 @@ class AuthRepository(
         val response = runApi { api.patchProfile(body) }
         if (!response.ok || response.user == null) {
             throw ApiException(response.error ?: "Failed to update profile")
+        }
+        return response.user
+    }
+
+    suspend fun linkPhone(phone: String, code: String): User {
+        val response = runApi {
+            api.linkPhone(LinkPhoneRequest(PhoneUtils.normalizePhone(phone), code))
+        }
+        if (!response.ok || response.user == null) {
+            throw ApiException(response.error ?: "Failed to link phone")
+        }
+        return response.user
+    }
+
+    suspend fun linkEmail(email: String, password: String): User {
+        val response = runApi {
+            api.linkEmail(
+                LinkEmailRequest(
+                    email = email.trim().lowercase(),
+                    password = password,
+                ),
+            )
+        }
+        if (!response.ok || response.user == null) {
+            throw ApiException(response.error ?: "Failed to link email")
+        }
+        return response.user
+    }
+
+    suspend fun linkGoogle(idToken: String): User {
+        val response = runApi { api.linkGoogle(GoogleAuthRequest(idToken)) }
+        if (!response.ok || response.user == null) {
+            throw ApiException(response.error ?: "Failed to link Google")
+        }
+        return response.user
+    }
+
+    suspend fun forgotPassword(email: String) {
+        val response = runApi {
+            api.forgotPassword(ForgotPasswordRequest(email.trim().lowercase()))
+        }
+        if (!response.ok) {
+            throw ApiException(response.error ?: response.message ?: "Failed to send reset code")
+        }
+    }
+
+    suspend fun resetPassword(email: String, code: String, newPassword: String) {
+        val response = runApi {
+            api.resetPassword(
+                ResetPasswordRequest(
+                    email = email.trim().lowercase(),
+                    code = code.trim(),
+                    newPassword = newPassword,
+                ),
+            )
+        }
+        if (!response.ok) {
+            throw ApiException(response.error ?: response.message ?: "Failed to reset password")
+        }
+    }
+
+    suspend fun uploadAvatar(imageBytes: ByteArray, mimeType: String = "image/jpeg"): User {
+        val ext = if (mimeType.contains("png", ignoreCase = true)) "png" else "jpg"
+        val body = imageBytes.toRequestBody(mimeType.toMediaType())
+        val part = MultipartBody.Part.createFormData("photo", "avatar.$ext", body)
+        val response = runApi { api.uploadAvatar(part) }
+        if (!response.ok || response.user == null) {
+            throw ApiException(response.error ?: "Failed to upload profile photo")
+        }
+        return response.user
+    }
+
+    suspend fun deleteAvatar(): User {
+        val response = runApi { api.deleteAvatar() }
+        if (!response.ok || response.user == null) {
+            throw ApiException(response.error ?: "Failed to remove profile photo")
         }
         return response.user
     }
