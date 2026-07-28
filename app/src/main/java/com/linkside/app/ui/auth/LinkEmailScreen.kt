@@ -22,7 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.modifier
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.linkside.app.data.api.PhoneUtils
 import com.linkside.app.ui.components.PrimaryButton
@@ -74,7 +74,7 @@ fun LinkEmailScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                "You’ll be able to sign in with this email and password in addition to your other methods.",
+                "You'll be able to sign in with this email and password in addition to your other methods.",
                 color = LinksideColors.TextSecondary,
             )
             OutlinedTextField(
@@ -95,7 +95,7 @@ fun LinkEmailScreen(
                 label = "Confirm password",
             )
             if (password.isNotEmpty() && confirm.isNotEmpty() && password != confirm) {
-                Text("Passwords don’t match", color = LinksideColors.Danger)
+                Text("Passwords don't match", color = LinksideColors.Danger)
             }
             PrimaryButton(
                 title = if (isLoading) "Saving…" else "Save Email & Password",

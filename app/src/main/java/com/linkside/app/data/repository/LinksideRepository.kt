@@ -5,6 +5,9 @@ import com.linkside.app.data.api.PhoneUtils
 import com.linkside.app.data.api.runApi
 import com.linkside.app.data.model.AddInvitesRequest
 import com.linkside.app.data.model.AddInvitesResponse
+import com.linkside.app.data.model.ContestClaimRequest
+import com.linkside.app.data.model.ContestLeaderboard
+import com.linkside.app.data.model.ContestWin
 import com.linkside.app.data.model.ContactStatus
 import com.linkside.app.data.model.ContactStatusRequest
 import com.linkside.app.data.model.CreateFriendGroupRequest
@@ -24,6 +27,7 @@ import com.linkside.app.data.model.ManualInvite
 import com.linkside.app.data.model.AppNotification
 import com.linkside.app.data.model.OptInMessageRequest
 import com.linkside.app.data.model.Photo
+import com.linkside.app.data.model.ReferralSummary
 import com.linkside.app.data.model.RemoveInviteRequest
 import com.linkside.app.data.model.RoundSummary
 import com.linkside.app.data.model.SaveGolfersRequest
@@ -50,6 +54,7 @@ import com.linkside.app.data.model.UpdateInviteStatusRequest
 import com.linkside.app.data.model.UpdateTeeTimeRequest
 import com.linkside.app.data.model.WeatherFunSummaryRequest
 import com.linkside.app.data.model.toPayload
+import com.linkside.app.data.api.ApiException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -786,5 +791,67 @@ class LinksideRepository(
             throw com.linkside.app.data.api.ApiException(response.error ?: "Failed to withdraw")
         }
         return response.participant
+    }
+
+    suspend fun fetchReferralSummary(): ReferralSummary {
+        val response = runApi { api.fetchReferralSummary() }
+        if (!response.ok) {
+            throw ApiException(response.error ?: "Failed to load referral summary")
+        }
+        return ReferralSummary(
+            invitedCount = response.invitedCount,
+            joinedCount = response.joinedCount,
+        )
+    }
+
+    suspend fun fetchContestLeaderboard(month: String? = null): ContestLeaderboard {
+        val response = runApi { api.fetchContestLeaderboard(month) }
+        if (!response.ok || response.month.isNullOrBlank() || response.prize.isNullOrBlank()) {
+            throw ApiException(response.error ?: "Failed to load contest leaderboard")
+        }
+        return ContestLeaderboard(
+            month = response.month,
+            prize = response.prize,
+            daysLeft = response.daysLeft,
+            minJoinsToWin = response.minJoinsToWin,
+            leaderboard = response.leaderboard,
+            myRank = response.myRank,
+            myCount = response.myCount,
+        )
+    }
+
+    suspend fun fetchMyContestClaim(): ContestWin? {
+        val response = runApi { api.fetchMyContestClaim() }
+        if (!response.ok) {
+            throw ApiException(response.error ?: "Failed to load contest claim")
+        }
+        return response.win
+    }
+
+    suspend fun claimContestPrize(
+        month: String,
+        name: String,
+        email: String?,
+        address: String,
+        city: String?,
+        state: String?,
+        zip: String?,
+    ) {
+        val response = runApi {
+            api.claimContestPrize(
+                ContestClaimRequest(
+                    month = month,
+                    name = name,
+                    email = email,
+                    address = address,
+                    city = city,
+                    state = state,
+                    zip = zip,
+                ),
+            )
+        }
+        if (!response.ok) {
+            throw ApiException(response.error ?: "Failed to submit claim")
+        }
     }
 }

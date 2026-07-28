@@ -6,6 +6,7 @@ import android.content.Intent
 sealed class PushRoute {
     data class RoundSummary(val teeTimeId: String) : PushRoute()
     data class PlayerOfTheDay(val teeTimeId: String) : PushRoute()
+    data object ContestClaim : PushRoute()
     data class TeeTime(val id: String) : PushRoute()
     data class Trip(val id: String) : PushRoute()
     data class Tournament(val id: String, val invite: Boolean = false) : PushRoute()
@@ -45,6 +46,9 @@ object PushRouter {
 object PushIntentParser {
     fun parse(intent: Intent?): PushRoute? {
         if (intent == null) return null
+        if (intent.getBooleanExtra(EXTRA_CONTEST_WINNER, false)) {
+            return PushRoute.ContestClaim
+        }
         val teeTimeId = intent.getStringExtra(EXTRA_TEE_TIME_ID)
         if (!teeTimeId.isNullOrBlank()) {
             val playerOfTheDay = intent.getBooleanExtra(EXTRA_PLAYER_OF_THE_DAY, false)
@@ -68,6 +72,8 @@ object PushIntentParser {
     }
 
     fun parseData(data: Map<String, String>): PushRoute? {
+        val contestWinner = data["contestWinner"] == "true" || data["contestWinner"] == "1"
+        if (contestWinner) return PushRoute.ContestClaim
         val teeTimeId = data["teeTimeId"]
         if (!teeTimeId.isNullOrBlank()) {
             val playerOfTheDay = data["playerOfTheDay"] == "true" || data["playerOfTheDay"] == "1"
@@ -90,6 +96,7 @@ object PushIntentParser {
         intent.removeExtra(EXTRA_TEE_TIME_ID)
         intent.removeExtra(EXTRA_ROUND_RECAP)
         intent.removeExtra(EXTRA_PLAYER_OF_THE_DAY)
+        intent.removeExtra(EXTRA_CONTEST_WINNER)
         intent.removeExtra(EXTRA_TRIP_ID)
         intent.removeExtra(EXTRA_TOURNAMENT_ID)
         intent.removeExtra(EXTRA_TOURNAMENT_INVITE)
@@ -103,6 +110,7 @@ object PushIntentParser {
                 intent.putExtra(EXTRA_TEE_TIME_ID, route.teeTimeId)
                 intent.putExtra(EXTRA_PLAYER_OF_THE_DAY, true)
             }
+            is PushRoute.ContestClaim -> intent.putExtra(EXTRA_CONTEST_WINNER, true)
             is PushRoute.TeeTime -> intent.putExtra(EXTRA_TEE_TIME_ID, route.id)
             is PushRoute.Trip -> intent.putExtra(EXTRA_TRIP_ID, route.id)
             is PushRoute.Tournament -> {
@@ -116,6 +124,7 @@ object PushIntentParser {
     const val EXTRA_TEE_TIME_ID = "teeTimeId"
     const val EXTRA_ROUND_RECAP = "roundRecap"
     const val EXTRA_PLAYER_OF_THE_DAY = "playerOfTheDay"
+    const val EXTRA_CONTEST_WINNER = "contestWinner"
     const val EXTRA_TRIP_ID = "tripId"
     const val EXTRA_TOURNAMENT_ID = "tournamentId"
     const val EXTRA_TOURNAMENT_INVITE = "tournamentInvite"

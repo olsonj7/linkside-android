@@ -15,8 +15,8 @@ import java.io.File
 import java.io.FileOutputStream
 
 object ShareLinks {
-    /** Same install URL baked into iOS share cards (App Store). */
-    const val INSTALL_URL = "https://apps.apple.com/us/app/linkside-golf/id6766528004"
+    /** Play Store listing for Android invite / contest shares. */
+    const val INSTALL_URL = "https://play.google.com/store/apps/details?id=com.linkside.app"
 }
 
 fun generateQrBitmap(content: String, sizePx: Int = 512): Bitmap {

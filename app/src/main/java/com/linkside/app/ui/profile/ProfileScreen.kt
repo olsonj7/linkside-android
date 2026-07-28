@@ -100,6 +100,7 @@ fun ProfileScreen(
     onDeclinedTripClick: (String) -> Unit = {},
     onWithdrawnTournamentClick: (String) -> Unit = {},
     onPreviousTeeTimeClick: (String) -> Unit = {},
+    onInviteContest: () -> Unit = {},
     onLinkEmail: () -> Unit = {},
     onLinkGoogle: () -> Unit = {},
     isLinkingGoogle: Boolean = false,
@@ -222,6 +223,10 @@ fun ProfileScreen(
                         )
                     }
                 }
+            }
+
+            item {
+                InviteContestBanner(onClick = onInviteContest)
             }
 
             item {
@@ -491,6 +496,51 @@ fun ProfileScreen(
 
             item { Spacer(modifier = Modifier.size(24.dp)) }
         }
+    }
+}
+
+@Composable
+private fun InviteContestBanner(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(LinksideColors.Gold.copy(alpha = 0.18f))
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(LinksideColors.Gold.copy(alpha = 0.35f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.EmojiEvents,
+                contentDescription = null,
+                tint = LinksideColors.Gold,
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Invite Contest",
+                fontWeight = FontWeight.Bold,
+                color = LinksideColors.TextPrimary,
+            )
+            Text(
+                "Invite friends who join this month — win a golf prize.",
+                style = MaterialTheme.typography.bodySmall,
+                color = LinksideColors.TextSecondary,
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = LinksideColors.TextSecondary,
+        )
     }
 }
 

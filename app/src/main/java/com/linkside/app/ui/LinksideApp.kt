@@ -26,6 +26,7 @@ import com.linkside.app.ui.navigation.decodeRoute
 import com.linkside.app.push.PushTokenManager
 import com.linkside.app.ui.splash.SplashScreen
 import com.linkside.app.viewmodel.AuthViewModel
+import com.linkside.app.viewmodel.ContestViewModel
 import com.linkside.app.viewmodel.GolfersViewModel
 import com.linkside.app.viewmodel.IdeaThreadViewModel
 import com.linkside.app.viewmodel.NotificationsViewModel
@@ -65,6 +66,9 @@ fun LinksideApp(
     )
     val tournamentViewModel: TournamentViewModel = viewModel(
         factory = TournamentViewModel.Factory(app.linksideRepository),
+    )
+    val contestViewModel: ContestViewModel = viewModel(
+        factory = ContestViewModel.Factory(app.linksideRepository),
     )
 
     val uiState by authViewModel.uiState.collectAsStateWithLifecycle()
@@ -140,6 +144,7 @@ fun LinksideApp(
                         ideaThreadViewModel = ideaThreadViewModel,
                         notificationsViewModel = notificationsViewModel,
                         tournamentViewModel = tournamentViewModel,
+                        contestViewModel = contestViewModel,
                         onDarkModeChange = onDarkModeChange,
                         onSignOut = { signOutFully() },
                     )

@@ -9,6 +9,10 @@ import com.linkside.app.data.model.BumpInviteeRequest
 import com.linkside.app.data.model.ToggleInviteAccessRequest
 import com.linkside.app.data.model.ContactStatusRequest
 import com.linkside.app.data.model.ContactStatusResponse
+import com.linkside.app.data.model.ContestClaimRequest
+import com.linkside.app.data.model.ContestClaimResponse
+import com.linkside.app.data.model.ContestClaimSubmitResponse
+import com.linkside.app.data.model.ContestLeaderboardResponse
 import com.linkside.app.data.model.ManualInvite
 import com.linkside.app.data.model.OptInMessageRequest
 import com.linkside.app.data.model.CourseLocationResponse
@@ -41,6 +45,7 @@ import com.linkside.app.data.model.PhotoResponse
 import com.linkside.app.data.model.PhotosResponse
 import com.linkside.app.data.model.PostAnnouncementRequest
 import com.linkside.app.data.model.PostAnnouncementResponse
+import com.linkside.app.data.model.ReferralSummaryResponse
 import com.linkside.app.data.model.TripAnnouncementsResponse
 import com.linkside.app.data.model.RemoveInviteRequest
 import com.linkside.app.data.model.ResetPasswordRequest
@@ -430,6 +435,19 @@ interface LinksideApi {
         @Path("ref") ref: String,
         @Body body: TournamentParticipantStatusRequest,
     ): TournamentParticipantResponse
+
+    // Invite Contest (monthly prize for top referrers by friends who joined)
+    @GET("referrals/summary")
+    suspend fun fetchReferralSummary(): ReferralSummaryResponse
+
+    @GET("referrals/leaderboard")
+    suspend fun fetchContestLeaderboard(@Query("month") month: String? = null): ContestLeaderboardResponse
+
+    @GET("contest/my-claim")
+    suspend fun fetchMyContestClaim(): ContestClaimResponse
+
+    @POST("contest/claim")
+    suspend fun claimContestPrize(@Body body: ContestClaimRequest): ContestClaimSubmitResponse
 }
 
 object ApiClient {

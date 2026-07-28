@@ -46,6 +46,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.linkside.app.data.contacts.ContactsHelper
 import com.linkside.app.data.location.LocationHelper
+import com.linkside.app.data.model.Friend
 import com.linkside.app.data.model.ManualInvite
 import com.linkside.app.data.model.User
 import com.linkside.app.data.prefs.ProfilePreferences
@@ -70,6 +71,8 @@ import com.linkside.app.ui.notifications.NotificationsScreen
 import com.linkside.app.ui.components.LinksideTopAppBar
 import com.linkside.app.ui.components.MentionCandidate
 import com.linkside.app.ui.components.ProfileAvatarView
+import com.linkside.app.ui.contest.ContestClaimScreen
+import com.linkside.app.ui.contest.InviteContestScreen
 import com.linkside.app.ui.home.HomeScreen
 import com.linkside.app.ui.profile.EditProfileScreen
 import com.linkside.app.ui.profile.ProfileScreen
@@ -88,6 +91,7 @@ import com.linkside.app.ui.trips.TripDetailScreen
 import com.linkside.app.ui.theme.LinksideColors
 import com.linkside.app.viewmodel.AuthViewModel
 import java.time.Instant
+import com.linkside.app.viewmodel.ContestViewModel
 import com.linkside.app.viewmodel.GolfersViewModel
 import com.linkside.app.viewmodel.IdeaThreadViewModel
 import com.linkside.app.viewmodel.NotificationsViewModel
@@ -109,6 +113,7 @@ fun MainTabShell(
     ideaThreadViewModel: IdeaThreadViewModel,
     notificationsViewModel: NotificationsViewModel,
     tournamentViewModel: TournamentViewModel,
+    contestViewModel: ContestViewModel,
     onDarkModeChange: (Boolean) -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
@@ -184,6 +189,11 @@ fun MainTabShell(
             is PushRoute.IdeaThread -> {
                 selectedTab = 0
                 homeNav.navigate(Routes.ideaThreadDetail(route.id)) { launchSingleTop = true }
+            }
+            is PushRoute.ContestClaim -> {
+                selectedTab = 2
+                profileNav.navigate(Routes.InviteContest) { launchSingleTop = true }
+                profileNav.navigate(Routes.ContestClaim) { launchSingleTop = true }
             }
         }
         notificationsViewModel.loadNotifications()
@@ -741,6 +751,11 @@ fun MainTabShell(
                                     homeNav.navigate(Routes.tripDetail(refId))
                                 notification.isTournamentRelated() && refId != null ->
                                     homeNav.navigate(Routes.tournamentDetail(refId))
+                                notification.isContestWinner() -> {
+                                    selectedTab = 2
+                                    profileNav.navigate(Routes.InviteContest)
+                                    profileNav.navigate(Routes.ContestClaim)
+                                }
                             }
                         },
                         onDelete = { notificationsViewModel.deleteNotification(it) },
@@ -1043,6 +1058,7 @@ fun MainTabShell(
                         onDeclinedTripClick = { id -> profileNav.navigate(Routes.tripDetail(id)) },
                         onWithdrawnTournamentClick = { id -> profileNav.navigate(Routes.tournamentDetail(id)) },
                         onPreviousTeeTimeClick = { id -> profileNav.navigate(Routes.teeTimeDetail(id)) },
+                        onInviteContest = { profileNav.navigate(Routes.InviteContest) },
                         onLinkEmail = { profileNav.navigate(Routes.LinkEmail) },
                         onLinkGoogle = {
                             scope.launch {
@@ -1078,6 +1094,36 @@ fun MainTabShell(
                             }
                         },
                     )
+                }
+                composable(Routes.InviteContest) {
+                    InviteContestScreen(
+                        user = user,
+                        viewModel = contestViewModel,
+                        onBack = { profileNav.safePopBack("profile_main") },
+                        onClaimPrize = { profileNav.navigate(Routes.ContestClaim) },
+                    )
+                }
+                composable(Routes.ContestClaim) {
+                    val contestState by contestViewModel.uiState.collectAsStateWithLifecycle()
+                    LaunchedEffect(Unit) {
+                        if (contestState.win == null) contestViewModel.load()
+                    }
+                    val win = contestState.win
+                    if (win != null) {
+                        ContestClaimScreen(
+                            win = win,
+                            user = user,
+                            viewModel = contestViewModel,
+                            onBack = { profileNav.safePopBack(Routes.InviteContest) },
+                        )
+                    } else if (contestState.isLoading) {
+                        LoadingWithBack(onBack = { profileNav.safePopBack(Routes.InviteContest) })
+                    } else {
+                        LaunchedEffect(Unit) {
+                            Toast.makeText(context, "No prize to claim right now", Toast.LENGTH_SHORT).show()
+                            profileNav.safePopBack(Routes.InviteContest)
+                        }
+                    }
                 }
                 composable(
                     route = Routes.TournamentDetail,

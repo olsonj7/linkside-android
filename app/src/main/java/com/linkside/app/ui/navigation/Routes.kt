@@ -29,6 +29,8 @@ object Routes {
     const val TournamentDetail = "tournament_detail/{id}"
     const val ForgotPassword = "forgot_password"
     const val LinkEmail = "link_email"
+    const val InviteContest = "invite_contest"
+    const val ContestClaim = "contest_claim"
 
     fun verifyCode(phone: String): String = "verify_code/${phone.encodeRoute()}"
     fun teeTimeDetail(id: String): String = "tee_time_detail/${id.encodeRoute()}"

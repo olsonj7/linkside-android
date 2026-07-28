@@ -151,6 +151,8 @@ data class AppNotification(
 
     fun isRoundRecap(): Boolean = type == "round_recap"
 
+    fun isContestWinner(): Boolean = type == "contest_winner"
+
     /** Chat message / poll notifications that should open the relevant chat thread. */
     fun opensChat(): Boolean =
         type == "tee_time_message" ||
