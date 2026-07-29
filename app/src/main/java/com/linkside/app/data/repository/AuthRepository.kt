@@ -234,6 +234,14 @@ class AuthRepository(
         tokenStore.clearToken()
     }
 
+    suspend fun deleteAccount() {
+        val response = runApi { api.deleteAccount() }
+        if (!response.ok) {
+            throw ApiException(response.error ?: "Failed to delete account")
+        }
+        tokenStore.clearToken()
+    }
+
     companion object {
         fun create(api: LinksideApi, tokenStore: TokenStore): AuthRepository =
             AuthRepository(api, tokenStore)

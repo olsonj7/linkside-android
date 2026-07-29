@@ -138,6 +138,9 @@ interface LinksideApi {
     @PATCH("me")
     suspend fun patchProfile(@Body body: Map<String, @JvmSuppressWildcards Any?>): UserResponse
 
+    @DELETE("me")
+    suspend fun deleteAccount(): OkResponse
+
     @POST("me/link-phone")
     suspend fun linkPhone(@Body body: LinkPhoneRequest): UserResponse
 

@@ -1081,6 +1081,14 @@ fun MainTabShell(
                         },
                         isLinkingGoogle = authState.isLoading,
                         onSignOut = onSignOut,
+                        onDeleteAccount = {
+                            scope.launch {
+                                PushTokenManager.unregisterFromServer(app.linksideRepository)
+                                PushTokenManager.clearCache(context)
+                                golfersViewModel.clearLocalData()
+                                authViewModel.deleteAccount {}
+                            }
+                        },
                     )
                 }
                 composable(Routes.LinkEmail) {

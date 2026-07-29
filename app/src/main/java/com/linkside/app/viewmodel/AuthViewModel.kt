@@ -349,6 +349,25 @@ class AuthViewModel(
         _uiState.update { AuthUiState(isInitializing = false) }
     }
 
+    fun deleteAccount(onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            try {
+                repository.deleteAccount()
+                _uiState.update { AuthUiState(isInitializing = false) }
+                onSuccess()
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = e.message
+                            ?: "Could not delete account. Please try again or contact support@getlinkside.com.",
+                    )
+                }
+            }
+        }
+    }
+
     class Factory(
         private val repository: AuthRepository,
     ) : ViewModelProvider.Factory {

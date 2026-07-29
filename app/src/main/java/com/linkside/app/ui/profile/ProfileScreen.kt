@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ExitToApp
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.SportsGolf
 import androidx.compose.material.icons.filled.StarOutline
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -48,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -105,10 +108,14 @@ fun ProfileScreen(
     onLinkGoogle: () -> Unit = {},
     isLinkingGoogle: Boolean = false,
     onSignOut: () -> Unit,
+    onDeleteAccount: () -> Unit = {},
+    isDeletingAccount: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     var showAddFavorite by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var isDeletingLocal by remember { mutableStateOf(false) }
     var defaultGroupSize by remember { mutableStateOf(profilePreferences.defaultGroupSize) }
     var smsEnabled by remember { mutableStateOf(profilePreferences.smsNotificationsEnabled) }
     var pushEnabled by remember { mutableStateOf(profilePreferences.pushNotificationsEnabled) }
@@ -494,8 +501,46 @@ fun ProfileScreen(
                 )
             }
 
+            item {
+                ProfileDestructiveRow(
+                    label = if (isDeletingAccount || isDeletingLocal) "Deleting…" else "Delete Account",
+                    icon = Icons.Default.Delete,
+                    onClick = { if (!isDeletingAccount && !isDeletingLocal) showDeleteConfirm = true },
+                )
+            }
+
             item { Spacer(modifier = Modifier.size(24.dp)) }
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!isDeletingLocal) showDeleteConfirm = false },
+            title = { Text("Delete Account") },
+            text = {
+                Text("This will permanently delete your account and all associated data. This cannot be undone.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        isDeletingLocal = true
+                        onDeleteAccount()
+                    },
+                    enabled = !isDeletingLocal,
+                ) {
+                    Text("Delete Account", color = LinksideColors.Danger)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteConfirm = false },
+                    enabled = !isDeletingLocal,
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 
