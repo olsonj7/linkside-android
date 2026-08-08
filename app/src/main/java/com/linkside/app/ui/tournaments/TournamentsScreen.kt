@@ -105,9 +105,9 @@ fun TournamentsScreen(
                             Text(tournament.name, fontWeight = FontWeight.SemiBold, color = LinksideColors.TextPrimary)
                             Text(tournament.courseName, color = LinksideColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
                             Text(tournament.formattedDate(), color = LinksideColors.TextTertiary, style = MaterialTheme.typography.labelSmall)
-                            tournament.myParticipantStatus?.let {
+                            tournament.myParticipantStatusLabel?.let { label ->
                                 Text(
-                                    it.replaceFirstChar { c -> c.uppercase() },
+                                    label,
                                     color = LinksideColors.AccentLabel,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,

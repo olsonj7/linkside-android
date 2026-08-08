@@ -30,6 +30,10 @@ data class Tournament(
         get() = myParticipantStatus in setOf("registered", "checked_in", "waitlist")
     val isWithdrawn: Boolean get() = myParticipantStatus == "withdrawn"
 
+    /** Human-readable registration status, matching iOS ParticipantStatus.displayName. */
+    val myParticipantStatusLabel: String?
+        get() = participantStatusLabel(myParticipantStatus)
+
     /** Human-readable play format (e.g. "Scramble"), matching iOS TournamentFormat.displayName. */
     val formatLabel: String?
         get() = when (format) {
@@ -60,6 +64,19 @@ data class Tournament(
         val day = DateTimeFormatter.ofPattern("EEE • MMM d", Locale.getDefault()).format(zoned)
         return if (!startTime.isNullOrBlank()) "$day • $startTime" else day
     }
+}
+
+/** Human-readable participant status, matching iOS ParticipantStatus.displayName. */
+fun participantStatusLabel(status: String?): String? = when (status) {
+    null, "" -> null
+    "invited" -> "Invited"
+    "registered" -> "Registered"
+    "checked_in" -> "Checked In"
+    "waitlist" -> "Waitlist"
+    "withdrawn" -> "Withdrawn"
+    "declined" -> "Declined"
+    else -> status.replace('_', ' ').split(' ')
+        .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase() } }
 }
 
 data class TournamentParticipant(

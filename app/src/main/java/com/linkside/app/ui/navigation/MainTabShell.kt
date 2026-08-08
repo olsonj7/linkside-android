@@ -574,6 +574,14 @@ fun MainTabShell(
                             onRemoveInvite = { invite ->
                                 teeTimeViewModel.removeInvite(id, invite.userId, invite.phone)
                             },
+                            onManageResponse = { invite, status ->
+                                teeTimeViewModel.updateRsvp(
+                                    teeTimeId = id,
+                                    phone = invite.phone,
+                                    status = status,
+                                    userId = invite.userId,
+                                )
+                            },
                         )
                     } else {
                         LoadingWithBack(onBack = { homeNav.safePopBack(Routes.HomeMain) })
@@ -1295,6 +1303,14 @@ fun MainTabShell(
                             },
                             onRemoveInvite = { invite ->
                                 teeTimeViewModel.removeInvite(id, invite.userId, invite.phone)
+                            },
+                            onManageResponse = { invite, status ->
+                                teeTimeViewModel.updateRsvp(
+                                    teeTimeId = id,
+                                    phone = invite.phone,
+                                    status = status,
+                                    userId = invite.userId,
+                                )
                             },
                         )
                     } else {

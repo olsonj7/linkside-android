@@ -111,6 +111,7 @@ fun TeeTimeDetailScreen(
     onToggleInviteAccess: (Invite) -> Unit = {},
     onSendLinksideInvite: (Invite) -> Unit = {},
     onRemoveInvite: (Invite) -> Unit = {},
+    onManageResponse: (Invite, InviteStatus) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -475,6 +476,32 @@ fun TeeTimeDetailScreen(
                 }
             }
 
+            // Host-only: update a player's RSVP if they replied outside the app (mirrors iOS).
+            if (isHost && !isTripTeeTime && !teeTime.isPast()) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            "Manage Responses",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = LinksideColors.TextPrimary,
+                        )
+                        Text(
+                            "Update a player's status if they let you know outside of text.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = LinksideColors.TextSecondary,
+                        )
+                        sortedInvites.filter { it.isHost != true }.forEach { invite ->
+                            ManageResponseRow(
+                                invite = invite,
+                                enabled = !isLoading,
+                                onSelect = { status -> onManageResponse(invite, status) },
+                            )
+                        }
+                    }
+                }
+            }
+
             item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
@@ -506,6 +533,67 @@ private fun inviteSortOrder(status: InviteStatus): Int = when (status) {
     InviteStatus.MAYBE -> 1
     InviteStatus.WAITING -> 2
     InviteStatus.NO -> 3
+}
+
+@Composable
+private fun ManageResponseRow(
+    invite: Invite,
+    enabled: Boolean,
+    onSelect: (InviteStatus) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(LinksideColors.Muted)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            invite.name,
+            fontWeight = FontWeight.Medium,
+            color = LinksideColors.TextPrimary,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf(
+                InviteStatus.YES to "Yes",
+                InviteStatus.NO to "No",
+                InviteStatus.MAYBE to "Maybe",
+            ).forEach { (status, label) ->
+                val selected = invite.inviteStatus == status
+                val bg = when {
+                    !selected -> LinksideColors.Card
+                    status == InviteStatus.YES -> LinksideColors.Success
+                    status == InviteStatus.NO -> LinksideColors.Danger
+                    else -> LinksideColors.GoldenBg
+                }
+                val fg = if (selected && status != InviteStatus.MAYBE) {
+                    androidx.compose.ui.graphics.Color.White
+                } else if (selected) {
+                    LinksideColors.GoldenText
+                } else {
+                    LinksideColors.TextPrimary
+                }
+                Text(
+                    text = label,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(bg)
+                        .clickable(enabled = enabled) { onSelect(status) }
+                        .padding(vertical = 10.dp),
+                    color = fg,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
 }
 
 /**
